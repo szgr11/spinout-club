@@ -1,6 +1,6 @@
 import { supabase, publicSupabase } from './supabase'
 import { CLUB_FONT } from './typography.js';
-import { deduplicateLaps } from './laps.js';
+import { deduplicateLaps, personalBests as selectPersonalBests, personalBestKey, memberLapHistory, normalizeLapLabel, readLapPages } from './laps.js';
 import { SecureAuth, GoogleButton } from './SecureAuth.jsx';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Trophy, Clock, User, LogOut, Plus, Check, X, Shield, Flag, Thermometer, Calendar, Zap, ChevronRight, AlertCircle, Edit2, Ban, MapPin, Megaphone, Lock, Settings, Pin } from 'lucide-react';
@@ -197,7 +197,7 @@ export default function App({ publicView = false }) {
 
   const refreshPublicData = async () => {
     const [lapRows,trackRows] = await Promise.all([
-      publicSupabase.from('leaderboard_laps').select('*'),
+      readLapPages(publicSupabase,'leaderboard_laps'),
       publicSupabase.from('leaderboard_tracks').select('*')
     ]);
     if(lapRows.error || trackRows.error){showToast('Could not load the Spinner boards. Please refresh shortly.','error');return;}
@@ -207,7 +207,7 @@ export default function App({ publicView = false }) {
 
   const refreshData = async () => {
     const [lapsRes, pendingLapsRes, usersRes, pendingUsersRes, tracksRes, billboardsRes, reportsRes] = await Promise.all([
-      supabase.from('laps').select('id,track,driver,time,car,hp,tire,temp,date,organizer,type,submitted_by,submitted_at,approved_by,approved_at,history'),
+      readLapPages(supabase,'laps','id,track,driver,time,car,hp,tire,temp,date,organizer,type,submitted_by,submitted_at,approved_by,approved_at,history'),
       supabase.from('pending_laps').select('id,track,driver,time,car,hp,tire,temp,date,organizer,type,image,submitted_by,submitted_at'),
       supabase.from('profiles').select('username,nickname,role,banned,joined_at'),
       supabase.from('pending_users').select('username,nickname,reason,submitted_at'),
@@ -227,6 +227,7 @@ export default function App({ publicView = false }) {
         reports: reportsRes.error
       });
       showToast('Database refresh failed. Check Supabase tables/RLS.', 'error');
+      return;
     }
 
     setLaps(deduplicateLaps(lapsRes.data || []).map(l => ({
@@ -953,22 +954,11 @@ function Field({ label, children, hint }) {
 
 // ============ LEADERBOARD VIEW ============
 
-function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, billboards, session, onDeleteBillboard, onReportLap, reports }) {
+export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, billboards, session, onDeleteBillboard, onReportLap, reports }) {
   const [filterType, setFilterType] = useState('all');
   const [lightbox, setLightbox] = useState(null);   // {imageData, driver, time}
   const [reportTarget, setReportTarget] = useState(null); // lap object
-  const trackLaps = useMemo(() => {
-    let filtered = laps.filter(l => l.track === activeTrack);
-    if (filterType !== 'all') filtered = filtered.filter(l => l.type === filterType);
-    const byDriver = {};
-    filtered.forEach(l => {
-      const key = l.driver.toLowerCase();
-      if (!byDriver[key] || parseTime(l.time) < parseTime(byDriver[key].time)) {
-        byDriver[key] = l;
-      }
-    });
-    return Object.values(byDriver).sort((a, b) => parseTime(a.time) - parseTime(b.time));
-  }, [laps, activeTrack, filterType]);
+  const trackLaps = useMemo(() => selectPersonalBests(laps,{track:activeTrack,type:filterType}), [laps, activeTrack, filterType]);
 
   const trackInfo = allTracks.find(t => t.id === activeTrack) || allTracks[0];
   const regions = [...new Set(allTracks.map(t => t.region))];
@@ -2432,32 +2422,28 @@ function Empty({ message }) {
 
 // ============ PROFILE VIEW ============
 
-function ProfileView({ session, laps, pendingLaps, users, allTracks, onChangePassword }) {
+export function ProfileView({ session, laps, pendingLaps, users, allTracks, onChangePassword }) {
   const [tab, setTab] = useState('bests');
-  const myLaps = laps.filter(l => l.submittedBy === session.username);
+  const [bestType,setBestType]=useState('all');
+  const [historyTrack,setHistoryTrack]=useState('all'),[historyCar,setHistoryCar]=useState('all'),[historyType,setHistoryType]=useState('all');
+  const myLaps = useMemo(()=>memberLapHistory(laps,session.username),[laps,session.username]);
   const myPending = pendingLaps.filter(l => l.submittedBy === session.username);
-
-  const lapsByTrack = {};
-  myLaps.forEach(l => {
-    if (!lapsByTrack[l.track] || parseTime(l.time) < parseTime(lapsByTrack[l.track].time)) {
-      lapsByTrack[l.track] = l;
+  const personalBests = useMemo(()=>selectPersonalBests(myLaps,{type:bestType}),[myLaps,bestType]);
+  const ranks=useMemo(()=>{
+    const result=new Map(),byTrack=new Map();
+    for(const lap of selectPersonalBests(laps,{type:bestType})){
+      if(!byTrack.has(lap.track))byTrack.set(lap.track,[]);
+      byTrack.get(lap.track).push(lap);
     }
-  });
-  const personalBests = Object.values(lapsByTrack);
-
+    for(const rows of byTrack.values())rows.forEach((lap,i)=>result.set(personalBestKey(lap),{position:i+1,total:rows.length}));
+    return result;
+  },[laps,bestType]);
+  const history=useMemo(()=>memberLapHistory(laps,session.username,{track:historyTrack,car:historyCar,type:historyType}),[laps,session.username,historyTrack,historyCar,historyType]);
+  const historyCars=[...new Map(myLaps.map(l=>[normalizeLapLabel(l.car),l.car||'Unspecified vehicle'])).entries()];
   const podiums = { p1: 0, p2: 0, p3: 0 };
-  Object.entries(lapsByTrack).forEach(([trackId, lap]) => {
-    const allOnTrack = laps.filter(l => l.track === trackId);
-    const byDriver = {};
-    allOnTrack.forEach(l => {
-      const k = l.driver.toLowerCase();
-      if (!byDriver[k] || parseTime(l.time) < parseTime(byDriver[k].time)) byDriver[k] = l;
-    });
-    const sorted = Object.values(byDriver).sort((a, b) => parseTime(a.time) - parseTime(b.time));
-    const myIdx = sorted.findIndex(l => l.driver.toLowerCase() === lap.driver.toLowerCase());
-    if (myIdx === 0) podiums.p1++;
-    else if (myIdx === 1) podiums.p2++;
-    else if (myIdx === 2) podiums.p3++;
+  personalBests.forEach(lap => {
+    const position=ranks.get(personalBestKey(lap))?.position;
+    if(position>=1&&position<=3)podiums['p'+position]++;
   });
 
   return (
@@ -2481,9 +2467,10 @@ function ProfileView({ session, laps, pendingLaps, users, allTracks, onChangePas
         <StatBlock label="P3 FINISHES" value={podiums.p3} />
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ display: 'flex', flexWrap:'wrap', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
         {[
           { id: 'bests', label: 'PERSONAL BESTS' },
+          { id: 'history', label: `LAP HISTORY (${myLaps.length})` },
           { id: 'pending', label: `MY PENDING (${myPending.length})` },
           { id: 'settings', label: 'SETTINGS' }
         ].map(t => (
@@ -2498,11 +2485,13 @@ function ProfileView({ session, laps, pendingLaps, users, allTracks, onChangePas
         ))}
       </div>
 
+      {tab==='bests'&&<div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',marginBottom:16,fontFamily:mono,fontSize:11}}><span style={{color:C.textDim}}>PB per driver, vehicle &amp; circuit</span><label>Lap type <select aria-label="Personal best lap type" value={bestType} onChange={e=>setBestType(e.target.value)} style={{...inputStyle,width:'auto',marginLeft:8}}><option value="all">All</option><option value="real">Real</option><option value="optimal">Optimal</option></select></label></div>}
+
       {tab === 'bests' && (
         personalBests.length === 0 ? (
           <Empty message="NO APPROVED LAPS YET — HIT THE TRACK" />
         ) : (
-          <div style={{ border: `1px solid ${C.border}` }}>
+          <div style={{ border: `1px solid ${C.border}`,overflowX:'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
               <thead>
                 <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
@@ -2511,20 +2500,14 @@ function ProfileView({ session, laps, pendingLaps, users, allTracks, onChangePas
                   <Th>VEHICLE</Th>
                   <Th>TIRE</Th>
                   <Th>DATE</Th>
+                  <Th>TYPE</Th>
                   <Th>POS</Th>
                 </tr>
               </thead>
               <tbody>
                 {personalBests.map(lap => {
                   const t = allTracks.find(x => x.id === lap.track);
-                  const all = laps.filter(l => l.track === lap.track);
-                  const byDriver = {};
-                  all.forEach(l => {
-                    const k = l.driver.toLowerCase();
-                    if (!byDriver[k] || parseTime(l.time) < parseTime(byDriver[k].time)) byDriver[k] = l;
-                  });
-                  const sorted = Object.values(byDriver).sort((a, b) => parseTime(a.time) - parseTime(b.time));
-                  const idx = sorted.findIndex(l => l.driver.toLowerCase() === lap.driver.toLowerCase()) + 1;
+                  const {position:idx,total}=ranks.get(personalBestKey(lap))||{};
                   return (
                     <tr key={lap._key} style={{ borderBottom: `1px solid ${C.border}` }}>
                       <Td>{t?.name} <span style={{ color: C.textFaint }}>{t?.variant}</span></Td>
@@ -2532,9 +2515,10 @@ function ProfileView({ session, laps, pendingLaps, users, allTracks, onChangePas
                       <Td><span style={{ color: C.textDim }}>{lap.car}</span></Td>
                       <Td><span style={{ color: C.textDim }}>{lap.tire}</span></Td>
                       <Td><span style={{ color: C.textFaint }}>{lap.date || '—'}</span></Td>
+                      <Td>{lap.type==='optimal'?'OPT':'REAL'}</Td>
                       <Td>
                         <span style={{ color: idx === 1 ? C.accent : idx <= 3 ? C.text : C.textDim, fontWeight: idx === 1 ? 700 : 400 }}>
-                          P{idx} / {sorted.length}
+                          P{idx} / {total}
                         </span>
                       </Td>
                     </tr>
@@ -2545,6 +2529,15 @@ function ProfileView({ session, laps, pendingLaps, users, allTracks, onChangePas
           </div>
         )
       )}
+
+      {tab==='history'&&<>
+        <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16,fontFamily:mono,fontSize:11}}>
+          <label>Circuit <select aria-label="History circuit" value={historyTrack} onChange={e=>setHistoryTrack(e.target.value)} style={{...inputStyle,width:'auto',maxWidth:'100%',marginLeft:8}}><option value="all">All circuits</option>{[...new Set(myLaps.map(l=>l.track))].map(id=>{const t=allTracks.find(t=>t.id===id);return <option key={id} value={id}>{t?`${t.name} ${t.variant||''}`:id}</option>;})}</select></label>
+          <label>Vehicle <select aria-label="History vehicle" value={historyCar} onChange={e=>setHistoryCar(e.target.value)} style={{...inputStyle,width:'auto',maxWidth:'100%',marginLeft:8}}><option value="all">All vehicles</option>{historyCars.map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>
+          <label>Lap type <select aria-label="History lap type" value={historyType} onChange={e=>setHistoryType(e.target.value)} style={{...inputStyle,width:'auto',marginLeft:8}}><option value="all">All</option><option value="real">Real</option><option value="optimal">Optimal</option></select></label>
+        </div>
+        {!history.length?<Empty message="NO APPROVED LAPS MATCH THESE FILTERS"/>:<div style={{border:`1px solid ${C.border}`,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontFamily:mono,fontSize:12}}><thead><tr style={{background:C.panel2,borderBottom:`1px solid ${C.border}`}}><Th>DATE</Th><Th>CIRCUIT</Th><Th>DRIVER</Th><Th>TIME</Th><Th>VEHICLE</Th><Th>TIRE</Th><Th>TYPE</Th><Th>EVENT</Th></tr></thead><tbody>{history.map(lap=>{const t=allTracks.find(t=>t.id===lap.track);return <tr key={lap._key??lap.id} style={{borderBottom:`1px solid ${C.border}`}}><Td>{lap.date||'—'}</Td><Td>{t?.name||lap.track} <span style={{color:C.textFaint}}>{t?.variant}</span></Td><Td>{lap.driver}</Td><Td><span style={{color:C.accent,fontWeight:700}}>{lap.time}</span></Td><Td>{lap.car||'—'}</Td><Td>{lap.tire||'—'}</Td><Td>{lap.type==='optimal'?'OPT':'REAL'}</Td><Td>{lap.organizer||'—'}</Td></tr>;})}</tbody></table></div>}
+      </>}
 
       {tab === 'pending' && (
         myPending.length === 0 ? (

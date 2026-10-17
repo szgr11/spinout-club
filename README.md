@@ -5,7 +5,7 @@ React + Vite source for the Spinout Club track community and Spinner boards. Sup
 ## Public pages and member tools
 
 - `/` and `/events`: public track-day calendar, source links, published offers and special events.
-- `/leaderboard` (also `/leaderboards`): public Spinner boards with approved lap times and track filters. No account is required.
+- `/leaderboard` (also `/leaderboards`): public Spinner boards with approved lap times and track filters. Each driver/vehicle/circuit-layout combination keeps its fastest result in the selected All/Real/Optimal filter. Formatting differences in driver/vehicle names are normalized; different model/trim descriptions stay separate. No account is required.
 - `/members`: sign in to log a time, manage a profile or link Google. Approved membership is required for submissions; admin review remains protected.
 
 All website text uses self-hosted JetBrains Mono Variable, including headings, navigation, tables, forms and member tools. Font files are bundled with the site. The font family is shared through `src/typography.js` and `src/global.css`; no Google Fonts stylesheet is fetched.
@@ -46,6 +46,8 @@ The production output is `dist/`. The build also succeeds without configuration;
 The app uses the existing `laps`, `pending_laps`, `profiles`, `pending_users`, `tracks`, `billboards`, and `reports` tables. Applied migrations are retained in `supabase/migrations`. Do not run the older deployment guide's sample schema over this database.
 
 Supabase Auth verifies sessions; existing club passwords are checked server-side against private bcrypt hashes. Google can be linked to an existing membership from Profile → Settings. Public leaderboards use `security_invoker` views with explicit safe-column grants. Private account fields, pending submissions and moderation history are excluded. See `SECURITY-CUTOVER.md` for the authorization model.
+
+Members can open Profile → Lap History for their approved submissions, newest event date first, with circuit, vehicle and lap-type filters. Slower results remain available when a PB improves; pending submissions keep their separate tab. Personal Bests and podium counts use the same driver/vehicle/layout ranking as the public board. History is associated with the submitting account, never inferred from a matching display name. Approved-result reads use stable ID pagination so older results are not silently cut off at the API's row limit; a failed page leaves existing data in place. Identical legacy imports remain collapsed for display, with account ownership included in the duplicate key. Vehicle identity remains a normalized text label, rather than a garage/VIN record; different spellings such as “M3” and “BMW M3” are separate entries.
 
 ## Hosting
 
