@@ -1,4 +1,5 @@
-import { supabase } from './supabase'
+import { supabase, publicSupabase } from './supabase'
+import { CLUB_FONT } from './typography.js';
 import { deduplicateLaps } from './laps.js';
 import { SecureAuth, GoogleButton } from './SecureAuth.jsx';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -61,8 +62,8 @@ const C = {
   blue: '#6ec5ff',
 };
 
-const mono = '"JetBrains Mono", "Menlo", "Consolas", monospace';
-const sans = '"Inter", system-ui, -apple-system, sans-serif';
+const mono = CLUB_FONT;
+const sans = CLUB_FONT;
 const inputStyle = {
   width: '100%', background: C.bg, border: `1px solid ${C.border}`,
   color: C.text, padding: '10px 12px', fontFamily: mono, fontSize: 13,
@@ -130,10 +131,10 @@ const exportCSV = (rows, filename) => {
 };
 
 // ============ APP ============
-export default function App() {
+export default function App({ publicView = false }) {
   const [loaded, setLoaded] = useState(false);
   const [session, setSession] = useState(null);
-  const [view, setView] = useState('leaderboards');
+  const [view, setView] = useState(publicView ? 'leaderboards' : 'submit');
   const [activeTrack, setActiveTrack] = useState('sow_cw');
   const [laps, setLaps] = useState([]);
   const [pendingLaps, setPendingLaps] = useState([]);
@@ -173,11 +174,13 @@ export default function App() {
       setSession(null);
       setApplication(null);
       setLaps([]); setUsers({}); setPending({}); setPendingLaps([]); setReports([]); setBillboards([]);
+      let approved = false;
       if (authUser) {
         const {data:profile,error} = await supabase.rpc('spinout_account');
         if (!active) return;
         if (error) showToast('Member sign-in is temporarily unavailable. Please try again shortly.', 'error');
         else if (profile && !profile.banned) {
+          approved = true;
           setSession(profile);
           await refreshData();
         } else if (profile?.banned) showToast('This membership is suspended. Contact a club admin.', 'error');
@@ -186,10 +189,21 @@ export default function App() {
           if(active)setApplication(p);
         }
       }
+      if(publicView && active && !approved) await refreshPublicData();
       if(active)setLoaded(true);
     })();
     return () => {active=false;};
-  }, [authUser?.id,authReady]);
+  }, [authUser?.id,authReady,publicView]);
+
+  const refreshPublicData = async () => {
+    const [lapRows,trackRows] = await Promise.all([
+      publicSupabase.from('leaderboard_laps').select('*'),
+      publicSupabase.from('leaderboard_tracks').select('*')
+    ]);
+    if(lapRows.error || trackRows.error){showToast('Could not load the leaderboard. Please refresh shortly.','error');return;}
+    setLaps(deduplicateLaps(lapRows.data || []).map(l=>({...l,_key:l.id})));
+    setCustomTracks(trackRows.data || []);
+  };
 
   const refreshData = async () => {
     const [lapsRes, pendingLapsRes, usersRes, pendingUsersRes, tracksRes, billboardsRes, reportsRes] = await Promise.all([
@@ -698,8 +712,8 @@ export default function App() {
     <div style={{ minHeight: '100vh', background: C.bg, color: C.text, fontFamily: sans }}>
       <GlobalStyle />
       {toast && <Toast {...toast} />}
-      {!session ? (
-        <SecureAuth authUser={authUser} application={application} onLogin={() => setView('leaderboards')}
+      {!session && !publicView ? (
+        <SecureAuth authUser={authUser} application={application} onLogin={() => setView('submit')}
           onLogout={handleLogout} onApplied={async () => {
             const {data:p} = await supabase.from('pending_users').select('username,nickname,submitted_at').eq('auth_user_id',authUser.id).maybeSingle();
             setApplication(p);
@@ -723,7 +737,7 @@ export default function App() {
                 reports={reports}
               />
             )}
-            {view === 'submit' && (
+            {view === 'submit' && session && (
               <SubmitView
                 onSubmit={submitLap}
                 initialTrack={activeTrack}
@@ -731,7 +745,7 @@ export default function App() {
                 allTracks={allTracks}
               />
             )}
-            {view === 'admin' && session.role === 'admin' && (
+            {view === 'admin' && session?.role === 'admin' && (
               <AdminView
                 pending={pending}
                 pendingLaps={pendingLaps}
@@ -757,7 +771,7 @@ export default function App() {
                 dismissReport={dismissReport}
               />
             )}
-            {view === 'profile' && (
+            {view === 'profile' && session && (
               <ProfileView
                 session={session}
                 laps={laps}
@@ -780,7 +794,6 @@ export default function App() {
 function GlobalStyle() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
       * { box-sizing: border-box; }
       body { margin: 0; background: ${C.bg}; }
       ::selection { background: ${C.accent}; color: ${C.bg}; }
@@ -853,27 +866,28 @@ function Logo({ size = 'normal' }) {
 
 function Header({ session, onLogout, view, setView, pendingCount }) {
   const tabs = [
-    { id: 'leaderboards', label: 'BOARDS', icon: Trophy },
-    { id: 'submit', label: 'SUBMIT', icon: Plus },
-    { id: 'profile', label: 'PROFILE', icon: User },
+    { id: 'leaderboards', label: 'BOARDS', icon: Trophy, href: '/leaderboard' },
+    ...(session ? [{ id: 'submit', label: 'LOG A TIME', icon: Plus, href: '/members' }, { id: 'profile', label: 'PROFILE', icon: User }] : []),
   ];
-  if (session.role === 'admin') tabs.push({ id: 'admin', label: 'CONTROL', icon: Shield, badge: pendingCount });
+  if (session?.role === 'admin') tabs.push({ id: 'admin', label: 'CONTROL', icon: Shield, badge: pendingCount });
 
   return (
     <header style={{
       borderBottom: `1px solid ${C.border}`,
       background: C.bg, position: 'sticky', top: 0, zIndex: 50,
     }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 32 }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '16px 24px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
         <Logo />
         <a href="/events" style={{color:C.accent,fontFamily:mono,fontSize:11,textDecoration:'none'}}>EVENTS ↗</a>
-        <nav style={{ display: 'flex', gap: 4, marginLeft: 24, flex: 1 }}>
+        <nav aria-label="Club navigation" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
           {tabs.map(t => {
             const Icon = t.icon;
             const active = view === t.id;
+            const Tab = t.href ? 'a' : 'button';
             return (
-              <button key={t.id} onClick={() => setView(t.id)}
+              <Tab key={t.id} href={t.href} onClick={t.href ? undefined : () => setView(t.id)} aria-current={active ? 'page' : undefined}
                 style={{
+                  textDecoration: 'none', whiteSpace: 'nowrap',
                   background: active ? C.panel : 'transparent',
                   border: `1px solid ${active ? C.borderLight : 'transparent'}`,
                   color: active ? C.accent : C.textDim,
@@ -890,24 +904,24 @@ function Header({ session, onLogout, view, setView, pendingCount }) {
                     padding: '1px 6px', marginLeft: 2, fontWeight: 700
                   }}>{t.badge}</span>
                 )}
-              </button>
+              </Tab>
             );
           })}
         </nav>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {session ? <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 12, fontFamily: mono, color: C.text }}>{session.nickname}</div>
             <div style={{ fontSize: 9, fontFamily: mono, color: session.role === 'admin' ? C.accent : C.textFaint, letterSpacing: 1.5 }}>
               {session.role === 'admin' ? '◆ ADMIN' : '◇ MEMBER'}
             </div>
           </div>
-          <button onClick={onLogout} style={{
+          <button aria-label="Sign out" onClick={onLogout} style={{
             background: 'transparent', border: `1px solid ${C.border}`,
             color: C.textDim, padding: 8, display: 'flex'
           }}>
             <LogOut size={14} />
           </button>
-        </div>
+        </div> : <a href="/members" style={{color:C.accent,fontFamily:mono,fontSize:11,textDecoration:'none',padding:10,border:`1px solid ${C.borderLight}`}}>LOG A TIME →</a>}
       </div>
     </header>
   );
@@ -916,9 +930,8 @@ function Header({ session, onLogout, view, setView, pendingCount }) {
 function Footer() {
   return (
     <footer style={{ borderTop: `1px solid ${C.border}`, marginTop: 64, padding: '20px 24px' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', justifyContent: 'space-between', fontFamily: mono, fontSize: 10, color: C.textFaint, letterSpacing: 1 }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', fontFamily: mono, fontSize: 10, color: C.textFaint, letterSpacing: 1 }}>
         <div>◆ THE SPINOUT CLUB // EST. 2024</div>
-        <div>SEND IT — BUT BRING IT BACK</div>
       </div>
     </footer>
   );
@@ -985,7 +998,7 @@ function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, billboa
                   <div style={{ fontFamily: mono, fontSize: 10, color: C.textFaint, marginLeft: 'auto' }}>
                     {new Date(b.postedAt).toLocaleDateString()} · @{b.postedBy}
                   </div>
-                  {session.role === 'admin' && (
+                  {session?.role === 'admin' && (
                     <button onClick={() => onDeleteBillboard(b._key)} style={{
                       background: 'transparent', border: 'none', color: C.textFaint,
                       padding: 0, marginLeft: 6
@@ -1118,7 +1131,7 @@ function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, billboa
               {trackLaps.map((l, i) => {
                 const lead = trackLaps[0];
                 const gap = parseTime(l.time) - parseTime(lead.time);
-                const userAlreadyReported = (reports || []).some(r => r.lapKey === l._key && r.reporter === session.username);
+                const userAlreadyReported = (reports || []).some(r => r.lapKey === l._key && r.reporter === session?.username);
                 const reportCount = (reports || []).filter(r => r.lapKey === l._key).length;
                 return (
                   <tr key={l._key} style={{
@@ -1181,14 +1194,14 @@ function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, billboa
                       )}
                     </Td>
                     <Td>
-                      {l.submittedBy !== session.username && (
+                      {session && l.submittedBy !== session.username && (
                         <button onClick={() => setReportTarget(l)} disabled={userAlreadyReported} title={userAlreadyReported ? 'Already reported' : 'Report suspicious time'} style={{
                           background: 'transparent', border: `1px solid ${userAlreadyReported ? C.borderLight : C.border}`,
                           color: userAlreadyReported ? C.textFaint : C.red, padding: '3px 7px', fontFamily: mono, fontSize: 9,
                           letterSpacing: 1, display: 'inline-flex', alignItems: 'center', gap: 3
                         }}>
                           <Flag size={9} /> {userAlreadyReported ? 'REPORTED' : 'REPORT'}
-                          {reportCount > 0 && session.role === 'admin' && (
+                          {reportCount > 0 && session?.role === 'admin' && (
                             <span style={{ color: C.accent, marginLeft: 3 }}>({reportCount})</span>
                           )}
                         </button>
@@ -2611,6 +2624,7 @@ function SettingsPanel({ onChangePassword, hasPassword }) {
         <h3 style={{fontSize:14}}>Sign in with Google</h3>
         <p style={{fontSize:12,color:C.textDim,lineHeight:1.7}}>Link Google while signed in to keep this membership and all your lap history.</p>
         <GoogleButton link onError={setError} />
+        {error&&<p role="alert" style={{color:C.red,fontSize:12,lineHeight:1.7}}>{error}</p>}
       </div>
       {hasPassword && <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 24 }}>
         <div style={{ fontFamily: mono, fontSize: 11, color: C.accent, letterSpacing: 2, marginBottom: 16,
