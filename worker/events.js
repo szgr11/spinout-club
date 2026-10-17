@@ -1,4 +1,5 @@
 import { load } from 'cheerio/slim';
+import {extractOffers,activeOffers,combineOffers} from './offers.js';
 
 export const SOURCES = [
   { id: 'speedventures', name: 'Speed Ventures', url: 'https://www.speedventures.com/events/Default.aspx' },
@@ -38,10 +39,10 @@ export function parseDateRange(label, year) {
   return dates;
 }
 const kindOf = (text) => /open test|test.?and.?tune|test & tune|open practice/i.test(text) ? 'Open practice' : /autox|autocross/i.test(text) ? 'Autocross' : /time attack|time trial|challenge/i.test(text) ? 'Track day / time trial' : 'Track day';
-function makeEvent({ title, date, venue, organizer, url, source, kind, note }) {
+function makeEvent({ title, date, venue, organizer, url, source, kind, note, promotions=[],prices=[],specials=[] }) {
   const info = trackInfo(venue);
   if (!info || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !safeURL(url)) return null;
-  return { title: clean(title).slice(0,180), date, ...info, organizer: clean(organizer), url: safeURL(url), kind: kind || kindOf(title), note: clean(note).slice(0,220), sources: [{ id: source.id, name: source.name, url: source.url }], checkedAt: new Date().toISOString() };
+  return { title: clean(title).slice(0,180), date, ...info, organizer: clean(organizer), url: safeURL(url), kind: kind || kindOf(title), note: clean(note).slice(0,220),promotions,prices,specials, sources: [{ id: source.id, name: source.name, url: source.url }], checkedAt: new Date().toISOString() };
 }
 export function parseSpeedVentures(html) {
   const $ = load(html); const events = []; const source = SOURCES[0];
@@ -49,7 +50,12 @@ export function parseSpeedVentures(html) {
     const card = $(a).parent(); const title = clean(card.find('h4').text());
     const dateText = clean(card.find('span').filter((_, e) => /\b20\d{2}\b/.test($(e).text())).first().text());
     const year = Number(dateText.match(/20\d{2}/)?.[0]);
-    for (const date of parseDateRange(dateText, year)) events.push(makeEvent({ title: `${title} · Speed Ventures`, date, venue: title, organizer: 'Speed Ventures', url: safeURL($(a).attr('href'), source.url), source }));
+    const url=safeURL($(a).attr('href'),source.url);
+    const offers=extractOffers(card.html(),{url:source.url,sourceId:source.id,today:todayPacific()});
+    const listingPrice=clean(card.find('span').filter((_,e)=>/^\$\s*\d/.test(clean($(e).text()))).first().text());
+    if(listingPrice)offers.prices=[{text:'Listed '+listingPrice,sourceUrl:source.url,sourceId:source.id,checkedAt:new Date().toISOString()}];
+    const note=clean(card.find('small').text());
+    for (const date of parseDateRange(dateText, year)) events.push(makeEvent({ title: `${title} · Speed Ventures`, date, venue: title, organizer: 'Speed Ventures', url, source,...offers,note,specials:/black friday|holiday|festival|special event|\bmeet\b/i.test(title)?[title]:[] }));
   });
   return events.filter(Boolean);
 }
@@ -64,7 +70,13 @@ export function parseSpeedSF(html, year) {
     const link = hpde.length ? hpde : registrations.first();
     const url = safeURL(link.attr('href'), source.url);
     if (!url) return;
-    for (const date of parseDateRange(card.find('.ssf-card-date').text(), year)) events.push(makeEvent({ title: `${title} · SpeedSF`, date, venue, organizer: 'SpeedSF', url, source, kind: hpde.length ? 'Track day' : kindOf(card.text()) }));
+    const offers=extractOffers(card.html(),{url:source.url,sourceId:source.id,today:todayPacific()});
+    const components=card.find('.ssf-comp-row').toArray().filter(e=>/special/i.test($(e).find('.ssf-badge').text())).map(e=>clean($(e).find('.ssf-comp-name').text()));
+    if(/special|fest|meet/i.test(title))components.push(title);
+    for (const date of parseDateRange(card.find('.ssf-card-date').text(), year)) {
+      const specials=components.filter(text=>{const explicit=parseDateRange(text,year);return !explicit.length||explicit.includes(date);});
+      events.push(makeEvent({ title: `${title} · SpeedSF`, date, venue, organizer: 'SpeedSF', url, source, kind: hpde.length ? 'Track day' : kindOf(card.text()),...offers,specials }));
+    }
   });
   return events.filter(Boolean);
 }
@@ -84,6 +96,8 @@ export function parseButtonwillow(data) {
     for (let d = new Date(`${start}T12:00:00Z`); d <= new Date(`${end}T12:00:00Z`) && events.length < 10; d = new Date(+d + 86400000)) {
       events.push(makeEvent({ title, date: d.toISOString().slice(0,10), venue, organizer, url: e.url, source,
         kind: /open test/i.test(title) ? 'Open practice' : /speed|drivers club|pca|porsche|audi|lotus|compact octane|ongrid|extreme/i.test(`${title} ${organizer}`) ? 'Track day' : 'Track event',
+        ...extractOffers(e.description,{url:e.url,sourceId:source.id,today:todayPacific()}),
+        specials:/special event|festival|\bmeet\b/i.test(title)?[title]:[],
         note: /open test/i.test(title) ? 'Open testing; check vehicle eligibility, sessions and fees with the track.' : 'Track calendar listing; confirm participation and registration with the organizer.' }));
     }
     return events.filter(Boolean);
@@ -96,23 +110,38 @@ export function mergeEvents(events, today = todayPacific()) {
     const key = `${e.date}|${e.track}|${organizerKey(e.organizer)}|${e.kind === 'Autocross' ? 'autox' : 'track'}`;
     const previous = merged.get(key);
     if (previous) {
+      previous.promotions=combineOffers(previous.promotions,e.promotions);
+      previous.prices=combineOffers(previous.prices,e.prices);
+      previous.specials=[...new Set([...(previous.specials||[]),...(e.specials||[])])];
       previous.sources = [...new Map([...previous.sources,...e.sources].map(s=>[s.id,s])).values()];
       if (previous.sources[0].id === 'buttonwillow' && e.sources[0].id !== 'buttonwillow') { previous.url=e.url; previous.title=e.title; }
     } else merged.set(key, { ...e, id: key });
   }
   return [...merged.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.track.localeCompare(b.track));
 }
+async function boundedText(response) {
+  const limit=2500000;
+  if(Number(response.headers.get('content-length')||0)>limit)throw new Error('Source too large');
+  const reader=response.body.getReader(),decoder=new TextDecoder();let bytes=0,text='';
+  try {
+    while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>limit){await reader.cancel();throw new Error('Source too large');}text+=decoder.decode(value,{stream:true});}
+    return text+decoder.decode();
+  } finally {reader.releaseLock();}
+}
 async function get(url, asJSON = false) {
   const r = await fetch(url, { headers: { 'User-Agent': 'SpinoutClub-EventCalendar/1.0 (+https://spinoutclub.cc/events)', Accept: asJSON ? 'application/json' : 'text/html' }, signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`Source returned HTTP ${r.status}`);
-  if (Number(r.headers.get('content-length') || 0) > 2500000) throw new Error('Source too large');
-  const body = await r.text();
-  if (body.length > 2500000) throw new Error('Source too large');
+  const body = await boundedText(r);
   return asJSON ? JSON.parse(body) : body;
 }
 export async function fetchSource(source, today = todayPacific()) {
   if (source.id === 'speedventures') return parseSpeedVentures(await get(source.url));
-  if (source.id === 'speedsf') return parseSpeedSF(await get(`https://www.speedsf.com/events${today.slice(0,4)}`), Number(today.slice(0,4)));
+  if (source.id === 'speedsf') {
+    const year=Number(today.slice(0,4));
+    const years=await Promise.allSettled([year,year+1].map(async y=>{const html=await get(`https://www.speedsf.com/events${y}`);if(!load(html)('title,h1').text().includes(String(y)))throw new Error('Schedule year not confirmed');return parseSpeedSF(html,y);}));
+    const rows=years.flatMap(r=>r.status==='fulfilled'?r.value:[]);
+    if(!rows.length)throw new Error('No recognized schedule cards');return rows;
+  }
   if (source.id === 'buttonwillow') {
     const all = []; const end = new Date(`${today}T12:00:00Z`); end.setUTCMonth(end.getUTCMonth()+12);
     for (let page = 1; page <= 4; page++) {
@@ -123,20 +152,52 @@ export async function fetchSource(source, today = todayPacific()) {
   }
   throw new Error('Unknown source');
 }
+const DETAIL_HOSTS=new Set(['speedventures.com','www.speedventures.com','speedsf.com','www.speedsf.com','buttonwillowraceway.com','www.buttonwillowraceway.com','www.motorsportreg.com','speedsf.motorsportreg.com','msreg.com']);
+const detailAllowed=url=>{try{const u=new URL(url);return u.protocol==='https:'&&DETAIL_HOSTS.has(u.hostname);}catch{return false;}};
+async function detailHTML(url) {
+ for(let redirects=0;redirects<4;redirects++){
+  if(!detailAllowed(url))throw new Error('Unsupported event host');
+  const r=await fetch(url,{headers:{'User-Agent':'SpinoutClub-EventCalendar/1.1 (+https://spinoutclub.cc/events)'},redirect:'manual',signal:AbortSignal.timeout(12000)});
+  if(r.status>=300&&r.status<400){url=new URL(r.headers.get('location'),url).href;continue;}
+  if(!r.ok)throw new Error('Event page unavailable');
+  return boundedText(r);
+ }throw new Error('Too many redirects');
+}
+export async function enrichEvents(events,previous={},today=todayPacific()) {
+ const now=new Date().toISOString(),cache={};
+ const urls=[...new Set(events.map(e=>e.url).filter(detailAllowed))];
+ for(const url of urls)if(previous[url])cache[url]=previous[url];
+ const due=urls.filter(url=>!cache[url]?.checkedAt||Date.now()-Date.parse(cache[url].checkedAt)>=50*60000)
+  .sort((a,b)=>(Date.parse(cache[a]?.checkedAt)||0)-(Date.parse(cache[b]?.checkedAt)||0)).slice(0,24);
+ // Bound requests and concurrency. Unchecked URLs rotate ahead of recently checked URLs.
+ for(let i=0;i<due.length;i+=4)await Promise.all(due.slice(i,i+4).map(async url=>{
+  const sourceId=events.find(e=>e.url===url)?.sources?.[0]?.id;
+  try{const html=await detailHTML(url);cache[url]={...extractOffers(html,{url,sourceId,today,checkedAt:now}),checkedAt:now,status:'ok'};}
+  catch{cache[url]={...(cache[url]||{}),checkedAt:now,status:'stale'};}
+ }));
+ const enriched=events.map(e=>{
+  const detail=cache[e.url];const stale=detail?.status!=='ok'||Date.now()-Date.parse(detail.checkedAt)>2*3600000;
+  const mark=a=>activeOffers(a,today).map(x=>({...x,stale:stale||x.stale}));
+  return {...e,promotions:combineOffers(activeOffers(e.promotions,today),mark(detail?.promotions)),prices:combineOffers(e.prices,mark(detail?.prices)),offerCheckedAt:detail?.checkedAt||null,offerStatus:detail?.status||'not_checked'};
+ });
+ return {events:enriched,detailCache:cache,offerCoverage:{total:urls.length,checked:urls.filter(u=>cache[u]?.status==='ok').length,checkedThisRefresh:due.length}};
+}
 export async function refreshEvents(kv) {
-  const today = todayPacific(); const previous = await kv.get('calendar','json');
-  const results = await Promise.allSettled(SOURCES.map(s=>fetchSource(s,today)));
-  const events = []; const sources = [];
-  results.forEach((result,i) => {
-    const source = SOURCES[i]; const old = previous?.sources?.find(s=>s.id===source.id);
-    if (result.status === 'fulfilled' && result.value.length) {
-      events.push(...result.value); sources.push({...source,status:'ok',lastSuccess:new Date().toISOString(),count:result.value.length});
-    } else {
-      // A missing/changed parser must never erase previously verified future dates.
-      events.push(...(previous?.events || []).filter(e=>e.sources.some(s=>s.id===source.id)));
-      sources.push({...source,status:'stale',lastSuccess:old?.lastSuccess || null,count:old?.count || 0,error:'Could not refresh this source; verify dates on the organizer’s website.'});
-    }
-  });
-  const calendar = { updatedAt: new Date().toISOString(), events: mergeEvents(events,today), sources, refreshHours:6 };
-  await kv.put('calendar',JSON.stringify(calendar)); return calendar;
+ const today=todayPacific(),previous=await kv.get('calendar','json');
+ const results=await Promise.allSettled(SOURCES.map(s=>fetchSource(s,today)));
+ const events=[],sources=[],sourceSnapshots={};
+ results.forEach((result,i)=>{
+  const source=SOURCES[i],old=previous?.sources?.find(s=>s.id===source.id);
+  if(result.status==='fulfilled'&&result.value.length){
+   sourceSnapshots[source.id]=result.value;events.push(...result.value);sources.push({...source,status:'ok',lastSuccess:new Date().toISOString(),count:result.value.length});
+  }else{
+   const prior=previous?.sourceSnapshots?.[source.id]||(previous?.events||[]).filter(e=>e.sources.some(s=>s.id===source.id)).map(e=>({...e,sources:e.sources.filter(s=>s.id===source.id),promotions:(e.promotions||[]).filter(x=>x.sourceId===source.id),prices:(e.prices||[]).filter(x=>x.sourceId===source.id)}));
+   sourceSnapshots[source.id]=prior;
+   events.push(...prior.map(e=>({...e,sourceStale:true,promotions:(e.promotions||[]).map(x=>({...x,stale:true})),prices:(e.prices||[]).map(x=>({...x,stale:true}))})));
+   sources.push({...source,status:'stale',lastSuccess:old?.lastSuccess||null,count:old?.count||0,error:'Could not refresh this source; verify dates on the organizer’s website.'});
+  }
+ });
+ const enriched=await enrichEvents(mergeEvents(events,today),previous?.detailCache,today);
+ const calendar={updatedAt:new Date().toISOString(),...enriched,sources,sourceSnapshots,refreshHours:1};
+ await kv.put('calendar',JSON.stringify(calendar));return calendar;
 }

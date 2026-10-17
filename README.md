@@ -2,11 +2,13 @@
 
 React + Vite source for the Spinout Club track community and driver leaderboards. Supabase remains the shared backend.
 
-## Recovered baseline
+## Public pages and member tools
 
-`src/SpinoutClub.jsx` is an unchanged copy of `SpinoutClub(4).jsx`, saved May 13, 2026 at 07:36 UTC. This is the newest recovered source, not a verified export of the currently deployed site. The missing Vite entry point and Supabase client module have been recreated.
+- `/` and `/events`: public track-day calendar, source links, published offers and special events.
+- `/leaderboard` (also `/leaderboards`): public approved lap times and track filters. No account is required.
+- `/members`: sign in to log a time, manage a profile or link Google. Approved membership is required for submissions; admin review remains protected.
 
-The existing interface includes track leaderboards, lap submissions and review, membership applications, profiles, announcements, reports, and custom tracks.
+All website text uses self-hosted JetBrains Mono Variable, including headings, navigation, tables, forms and member tools. Font files are bundled with the site. The font family is shared through `src/typography.js` and `src/global.css`; no Google Fonts stylesheet is fetched.
 
 ## Run locally
 
@@ -41,12 +43,12 @@ The production output is `dist/`. The build also succeeds without configuration;
 
 ## Existing Supabase database
 
-The recovered app uses these existing tables: `laps`, `pending_laps`, `profiles`, `pending_users`, `tracks`, `billboards`, and `reports`. No database migration is included or applied. The older deployment guide's sample schema does not exactly match this later component, so it must not be run as a migration for this baseline.
+The app uses the existing `laps`, `pending_laps`, `profiles`, `pending_users`, `tracks`, `billboards`, and `reports` tables. Applied migrations are retained in `supabase/migrations`. Do not run the older deployment guide's sample schema over this database.
 
-The recovered component uses custom username/password fields and a local session record, rather than Supabase Auth. It reads password fields into the browser. This legacy behavior is preserved for recovery; authentication and database authorization need review before expanding access or publishing a new deployment.
+Supabase Auth verifies sessions; existing club passwords are checked server-side against private bcrypt hashes. Google can be linked to an existing membership from Profile → Settings. Public leaderboards use `security_invoker` views with explicit safe-column grants. Private account fields, pending submissions and moderation history are excluded. See `SECURITY-CUTOVER.md` for the authorization model.
 
 ## Hosting
 
-The live site uses the existing static-assets Worker `raspy-water-4eb5`, targeted by `wrangler.jsonc`. Cloudflare Workers Builds is connected to this repository and automatically builds and deploys pushes to `main`. The first deployment succeeded on October 16, 2026 (Pacific time), using the existing Supabase project and `spinoutclub.cc` domain. No Supabase schema or data changes were made. See `CLOUDFLARE.md` for the verified configuration and the optional manual GitHub Actions workflow.
+The live site uses the existing static-assets Worker `raspy-water-4eb5`, targeted by `wrangler.jsonc`. Cloudflare Workers Builds automatically builds and deploys pushes to `main`. The existing Supabase project and `spinoutclub.cc` domain are retained. See `CLOUDFLARE.md` for deployment configuration and `EVENTS.md` for calendar update logic.
 
 The existing project reference and verification notes are in `supabase/README.md`. The client also accepts `VITE_SUPABASE_ANON_KEY` for compatibility with older hosting settings.

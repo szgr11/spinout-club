@@ -1,6 +1,6 @@
 # Member authentication cutover
 
-The `secure_member_auth` migration and `club-auth` Edge Function are live in the existing Supabase project. The matching frontend was first deployed directly to the existing Cloudflare Worker at https://spinoutclub.cc/members (deployment `0ce0dda2b38b49efb23558465d8f232c`). Production source includes both applied migrations; do not roll back to the old browser-only login implementation.
+The `secure_member_auth` migration and `club-auth` Edge Function are live in the existing Supabase project. The matching frontend was first deployed directly to the existing Cloudflare Worker at https://spinoutclub.cc/members (deployment `0ce0dda2b38b49efb23558465d8f232c`). Source includes the applied authentication, privilege-isolation and public-leaderboard migrations; do not roll back to the old browser-only login implementation.
 
 The production source is maintained in https://github.com/szgr11/spinout-club. The existing Supabase database and Edge Function retain their own deployments; publishing the Vite frontend does not reapply database migrations.
 
@@ -8,7 +8,7 @@ The production source is maintained in https://github.com/szgr11/spinout-club. T
 
 - Existing username/password credentials are salted bcrypt hashes (cost 12) in `spinout_private.credentials`, which clients cannot read. PostgreSQL verified every copied hash before neutralizing the old public password fields. The retained fields contain only `[secured]`, enforced by constraints and used as the default for new applications. Password fields in the retired key/value store were scrubbed recursively. No original passwords were exported or backed up.
 - Member, pending-application and lap records are retained. Existing members keep username/password login; first sign-in creates and links a reserved random Supabase Auth identity. The server returns signed, refreshable Auth tokens. Retired localStorage-only identities are discarded.
-- Postgres uses server-owned membership rows for member/admin authorization. Banned members lose database access with an existing token. Public writes and credential access are denied. Applications and pending laps are visible only to their owner and club admins. Existing approved leaderboards remain restricted to members.
+- Postgres uses server-owned membership rows for member/admin authorization. Banned members lose access to member database operations with an existing token. Public writes and credential access are denied. Applications and pending laps are visible only to their owner and club admins. Approved racing results are public through the safe leaderboard views described below.
 - Login, email-link requests and applications require server-verified Turnstile with exact production hostname/action checks. Requests are size-limited. Database-backed quotas apply per address, username/email and authenticated applicant. One pending application is allowed per Auth identity, and approval remains an admin operation.
 - Failed password changes return structured errors so their attempt counter commits instead of rolling back. New club passwords require at least 12 characters and at most 72 UTF-8 bytes.
 - Turnstile's secret is in Supabase Vault; only a service-role RPC resolves it. No service key or provider secret is shipped to the browser.
@@ -17,7 +17,7 @@ The production source is maintained in https://github.com/szgr11/spinout-club. T
 
 ## Google and email provider setup
 
-The Google button and explicit existing-member linking flow are implemented. Google remains disabled until the owner configures an owned OAuth client in Supabase:
+The Google button and explicit existing-member linking flow are implemented. The owner configured the provider and reported Google sign-in working on October 16, 2026 (Pacific time). Required settings for future maintenance:
 
 1. Google Cloud Web client origin: `https://spinoutclub.cc`.
 2. Google callback: `https://wzdqnzfoaaxmnkvxtlpt.supabase.co/auth/v1/callback`.
@@ -29,11 +29,13 @@ Existing members must sign in with their original club username/password before 
 
 ## Verification
 
+The public-leaderboard migration exposes `leaderboard_laps` (result ID, circuit, driver, lap time, vehicle, power, tires, temperature, date, organizer and lap type) and `leaderboard_tracks` (circuit ID, name, variant and region). Both views use `security_invoker=true`. Anonymous reads receive explicit column privileges and select-only RLS policies; they receive no insert, update or delete privileges. Account identifiers, credential fields, submitter/approver metadata, pending rows and moderation history remain private. A separate anonymous client is used for visitors, including signed-in users without approved membership.
+
 The migration passed an isolated PostgreSQL/pgcrypto permission suite and a rollback-only rehearsal against the actual hosted schema before application. Endpoint tests cover valid login tokens, application identity binding, email redirects, missing/replayed/wrong-action challenges, forged JWTs, request size, and quota denial. A configured Vite production build passes.
 
 Cloudflare's previous preview failed because `wrangler preview` required a `previews` binding. The configuration now uses the separate `spinout-track-events-preview` KV namespace. Preview bot checks intentionally cannot authenticate against the production endpoint.
 
-Post-release checks passed: 13 profile records, one existing pending application and all 376 lap rows remain; 13 bcrypt credentials are private; no old password values remain in the active or retired stores. Eight live denial checks reject anonymous table access, direct applications, private credential RPCs, missing/invalid bot proofs and forged JWTs. All deployed HTML/JS/CSS bytes match the local build; the public calendar returns 62 event days and the six-hour cron remains configured. Actual member/admin login with a real Turnstile challenge, Google linking and production email delivery need browser/owner validation. Do not describe these untested flows as verified.
+The initial cutover preserved 13 profile records, one pending application and all 376 lap rows; 13 bcrypt credentials are private and old password values were neutralized. Live denial checks rejected private table reads, direct applications, private credential RPCs, missing/invalid bot proofs and forged JWTs. Public-view reads and private-column denials were checked separately after the public migration. Google sign-in is owner-verified; existing-member Google linking and production email delivery still need owner validation. Do not describe those flows as verified.
 
 ## Reproduce local checks
 
