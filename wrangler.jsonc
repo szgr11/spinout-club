@@ -3,8 +3,13 @@
   "name": "raspy-water-4eb5",
   "account_id": "260a0ada5fbdf9925db5e9d497b70ddc",
   "compatibility_date": "2026-05-13",
+  "main": "worker/index.js",
+  "kv_namespaces": [{"binding":"EVENTS","id":"df8826bff2b941ab86dffca41465158e"}],
+  "triggers": {"crons":["0 */6 * * *"]},
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
     "not_found_handling": "single-page-application"
   }
 }

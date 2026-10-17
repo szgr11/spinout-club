@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './SpinoutClub.jsx';
-import { isSupabaseConfigured } from './supabase.js';
+import EventsCalendar from './EventsCalendar.jsx';
+const App = lazy(() => import('./SpinoutClub.jsx'));
+const isSupabaseConfigured = Boolean(import.meta.env.VITE_SUPABASE_URL?.trim() && (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() || import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()));
 
 function ConfigurationNotice() {
   return (
@@ -17,5 +18,7 @@ function ConfigurationNotice() {
 }
 
 createRoot(document.getElementById('root')).render(
-  isSupabaseConfigured ? <App /> : <ConfigurationNotice />
+  window.location.pathname.startsWith('/members')
+    ? (isSupabaseConfigured ? <Suspense fallback={<div style={{background:'#0a0a0a',color:'#ffd400',padding:40}}>Loading member area…</div>}><App /></Suspense> : <ConfigurationNotice />)
+    : <EventsCalendar onMembers={() => window.location.assign('/members')} />
 );

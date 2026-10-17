@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { deduplicateLaps } from './laps.js';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Trophy, Clock, User, LogOut, Plus, Check, X, Shield, Flag, Thermometer, Calendar, Zap, ChevronRight, AlertCircle, Edit2, Ban, MapPin, Megaphone, Lock, Settings, Pin } from 'lucide-react';
 
@@ -199,7 +200,7 @@ export default function App() {
       showToast('Database refresh failed. Check Supabase tables/RLS.', 'error');
     }
 
-    setLaps((lapsRes.data || []).map(l => ({
+    setLaps(deduplicateLaps(lapsRes.data || []).map(l => ({
       ...l,
       submittedBy: l.submitted_by,
       submittedAt: l.submitted_at,
@@ -250,7 +251,7 @@ export default function App() {
       createdAt: t.created_at
     })));
 
-    setBillboards((billboardsRes.data || []).map(b => ({
+    setBillboards((billboardsRes.data || []).filter(b => b.title !== 'Duplicate lap time entry noted').map(b => ({
       id: b.id,
       title: b.title,
       body: b.body,
@@ -967,6 +968,7 @@ function Header({ session, onLogout, view, setView, pendingCount }) {
     }}>
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 32 }}>
         <Logo />
+        <a href="/events" style={{color:C.accent,fontFamily:mono,fontSize:11,textDecoration:'none'}}>EVENTS ↗</a>
         <nav style={{ display: 'flex', gap: 4, marginLeft: 24, flex: 1 }}>
           {tabs.map(t => {
             const Icon = t.icon;
@@ -1051,6 +1053,7 @@ function AuthScreen({ mode, setMode, onLogin, onRegister }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: `radial-gradient(ellipse at center, ${C.panel2} 0%, ${C.bg} 70%)` }}>
       <div style={{ width: '100%', maxWidth: 480 }}>
+        <a href="/events" style={{display:'block',marginBottom:28,color:C.accent,fontFamily:mono,fontSize:12,textDecoration:'none'}}>← PUBLIC EVENTS CALENDAR</a>
         <div style={{ marginBottom: 40, textAlign: 'center' }}>
           <Logo size="big" />
           <div style={{ fontFamily: mono, fontSize: 10, color: C.textFaint, letterSpacing: 4, marginTop: 12 }}>

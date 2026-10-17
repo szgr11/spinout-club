@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseDateRange,parseSpeedSF,parseSpeedVentures,parseButtonwillow,mergeEvents,refreshEvents,safeURL } from '../worker/events.js';
+
+test('ranges expand into local calendar days, including month and year boundaries',()=>{
+ assert.deepEqual(parseDateRange('October 24 - 25, 2026',2026),['2026-10-24','2026-10-25']);
+ assert.deepEqual(parseDateRange('Oct 31 – Nov 1',2026),['2026-10-31','2026-11-01']);
+ assert.deepEqual(parseDateRange('Dec 31 - Jan 1',2026),['2026-12-31','2027-01-01']);
+ assert.deepEqual(parseDateRange('Feb 31',2026),[]);
+});
+test('organizer adapters retain registration links and expand weekends',()=>{
+ const sv=parseSpeedVentures('<section id="getonthetrack"><div><h4>Buttonwillow Raceway Classic</h4><span>October 24 - 25, 2026</span><a class="absolutelink" href="Detail.aspx?id=1034"></a></div></section>');
+ assert.equal(sv.length,2);assert.equal(sv[0].url,'https://www.speedventures.com/events/Detail.aspx?id=1034');
+ const sf=parseSpeedSF('<div class="ssf-card"><div class="ssf-card-title">Sonoma Raceway</div><div class="ssf-card-date">Oct 31 · Sat</div><a class="ssf-reg-btn" href="https://msreg.com/hpde">HPDE</a><a class="ssf-reg-btn" href="https://msreg.com/autox">AutoX</a></div>',2026);
+ assert.equal(sf[0].kind,'Track day');assert.equal(sf[0].url,'https://msreg.com/hpde');
+});
+test('track feed labels open practice without representing a gate fee as entry price',()=>{
+ const result=parseButtonwillow({events:[{title:'Open Test (25ccw)',start_date:'2026-11-01 09:00:00',end_date:'2026-11-01 17:00:00',venue:{venue:'Buttonwillow Raceway Park &#8211; Classic'},organizer:[{organizer:'Buttonwillow Raceway'}],url:'https://buttonwillowraceway.com/event/test/'}]});
+ assert.equal(result[0].kind,'Open practice');assert.equal(result[0].track,'Buttonwillow · Classic');assert.equal(result[0].price,undefined);
+});
+test('same organizer, track and day merges sources; distinct organizers remain separate',()=>{
+ const e={date:'2026-11-01',track:'Buttonwillow · Classic',organizer:'Speed Ventures',kind:'Track day',url:'https://example.com/a',sources:[{id:'speedventures'}]};
+ const data=mergeEvents([e,{...e,url:'https://example.com/b',sources:[{id:'buttonwillow'}]},{...e,organizer:'PCA'}],'2026-10-01');
+ assert.equal(data.length,2);assert.equal(data[0].sources.length,2);assert.equal(data[0].url,e.url);
+ assert.equal(mergeEvents([e],'2027-01-01').length,0);
+});
+test('unsafe registration URLs are rejected',()=>{assert.equal(safeURL('javascript:alert(1)'),null);assert.equal(safeURL('data:text/html,no'),null);});
+test('upstream failures retain previously verified dates and mark affected sources stale',async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async()=>new Response('unavailable',{status:503});
+ let saved;const previous={sources:[{id:'speedventures',lastSuccess:'2026-10-01T00:00:00Z',count:1}],events:[{date:'2099-01-01',track:'Sonoma',organizer:'Speed Ventures',kind:'Track day',sources:[{id:'speedventures'}]}]};
+ try{await refreshEvents({get:async()=>previous,put:async(k,v)=>saved=JSON.parse(v)});assert.equal(saved.events.length,1);assert.ok(saved.sources.every(s=>s.status==='stale'));assert.equal(saved.sources[0].lastSuccess,previous.sources[0].lastSuccess);}finally{globalThis.fetch=original;}
+});
