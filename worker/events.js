@@ -19,7 +19,7 @@ function trackInfo(text) {
   if (/willow/.test(t)) return { track: 'Big Willow', region: 'SoCal' };
   if (/laguna|weathertech/.test(t)) return { track: 'Laguna Seca', region: 'NorCal' };
   if (/sonoma/.test(t)) return { track: 'Sonoma', region: 'NorCal' };
-  if (/thunderhill/.test(t)) return { track: 'Thunderhill', region: 'NorCal' };
+  if (/thunderhill/.test(t)) return { track: /west/.test(t) ? 'Thunderhill · West' : /east/.test(t) ? 'Thunderhill · East' : /5.?mile|5mi/.test(t) ? 'Thunderhill · 5 mile' : 'Thunderhill', region: 'NorCal' };
   if (/spring mountain/.test(t)) return { track: 'Spring Mountain', region: 'Nevada' };
   if (/las vegas/.test(t)) return { track: 'Las Vegas Motor Speedway', region: 'Nevada' };
   return null;
@@ -73,15 +73,17 @@ export function parseButtonwillow(data) {
   if (!Array.isArray(data.events)) throw new Error('Unexpected track feed format');
   return data.events.flatMap(e => {
     const title = load(`<span>${e.title || ''}</span>`)('span').text();
-    if (/moto|motorcycle|kart|private|closed|drift|superbike|road.?race association|\bcra\b/i.test(title)) return [];
     const venue = load(`<span>${e.venue?.venue || ''}</span>`)('span').text();
-    const organizer = load(`<span>${e.organizer?.[0]?.organizer || title}</span>`)('span').text();
+    const rawOrganizer = load(`<span>${e.organizer?.[0]?.organizer || title}</span>`)('span').text();
+    const description = load(`<span>${e.description || ''}</span>`)('span').text();
+    if (/moto|motorcycle|kart|private|closed|drift|superbike|road.?race association|\bcra\b|cckra|2 wheel|track daz|let[’']?s ride|fastrack riders/i.test(`${title} ${rawOrganizer} ${description}`)) return [];
+    const organizer = /^(speed\s*sf)(\.com)?$/i.test(rawOrganizer) ? 'SpeedSF' : /pca\s*\/\s*sd|porsche club of america.*san diego/i.test(rawOrganizer) ? 'PCA · San Diego' : /pca\s*\/\s*ccr|porsche club of america.*central coast/i.test(rawOrganizer) ? 'PCA · Central Coast' : rawOrganizer;
     const start = e.start_date?.slice(0,10), end = e.end_date?.slice(0,10);
     const events = [];
     if (!start || !end) return events;
     for (let d = new Date(`${start}T12:00:00Z`); d <= new Date(`${end}T12:00:00Z`) && events.length < 10; d = new Date(+d + 86400000)) {
       events.push(makeEvent({ title, date: d.toISOString().slice(0,10), venue, organizer, url: e.url, source,
-        kind: /open test/i.test(title) ? 'Open practice' : /race|cal club/i.test(title) ? 'Track event' : 'Track day',
+        kind: /open test/i.test(title) ? 'Open practice' : /speed|drivers club|pca|porsche|audi|lotus|compact octane|ongrid|extreme/i.test(`${title} ${organizer}`) ? 'Track day' : 'Track event',
         note: /open test/i.test(title) ? 'Open testing; check vehicle eligibility, sessions and fees with the track.' : 'Track calendar listing; confirm participation and registration with the organizer.' }));
     }
     return events.filter(Boolean);

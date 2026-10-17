@@ -25,6 +25,10 @@ test('same organizer, track and day merges sources; distinct organizers remain s
  assert.equal(mergeEvents([e],'2027-01-01').length,0);
 });
 test('unsafe registration URLs are rejected',()=>{assert.equal(safeURL('javascript:alert(1)'),null);assert.equal(safeURL('data:text/html,no'),null);});
+test('abbreviated motorcycle/kart listings are excluded using organizer metadata',()=>{
+ const base={start_date:'2026-11-01 09:00:00',end_date:'2026-11-01 17:00:00',venue:{venue:'Buttonwillow Classic'},url:'https://buttonwillowraceway.com/event/test/'};
+ assert.equal(parseButtonwillow({events:[{...base,title:'CCKRA',organizer:[{organizer:'Central California Kart Racing Association'}]},{...base,title:'2 Wheel Track Days'},{...base,title:'Track Daz'}]}).length,0);
+});
 test('upstream failures retain previously verified dates and mark affected sources stale',async()=>{
  const original=globalThis.fetch;
  globalThis.fetch=async()=>new Response('unavailable',{status:503});
