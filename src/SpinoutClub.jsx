@@ -47,11 +47,11 @@ const validateTimeFormat = (t) => /^\d+:\d{2}\.\d{1,3}$/.test(String(t).trim());
 
 // ============ DESIGN TOKENS ============
 const C = {
-  bg: '#0a0a0a',
-  panel: '#141414',
-  panel2: '#1a1a1a',
-  border: '#262626',
-  borderLight: '#333',
+  bg: '#111214',
+  panel: '#191a1c',
+  panel2: '#202124',
+  border: '#303236',
+  borderLight: '#3b3d41',
   text: '#e8e8e8',
   textDim: '#888',
   textFaint: '#555',
@@ -702,14 +702,14 @@ export default function App({ publicView = false }) {
   // ----- RENDER -----
   if (!loaded) {
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, color: C.text, fontFamily: mono, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="club-page" style={{ minHeight: '100vh', color: C.text, fontFamily: mono, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <BootScreen />
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, color: C.text, fontFamily: sans }}>
+    <div className="club-page" style={{ minHeight: '100vh', color: C.text, fontFamily: sans }}>
       <GlobalStyle />
       {toast && <Toast {...toast} />}
       {!session && !publicView ? (
@@ -795,7 +795,7 @@ function GlobalStyle() {
   return (
     <style>{`
       * { box-sizing: border-box; }
-      body { margin: 0; background: ${C.bg}; }
+      body { margin: 0; }
       ::selection { background: ${C.accent}; color: ${C.bg}; }
       input, select, textarea { outline: none; }
       input:focus, select:focus, textarea:focus { border-color: ${C.accent} !important; }

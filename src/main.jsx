@@ -8,7 +8,7 @@ const isSupabaseConfigured = Boolean(import.meta.env.VITE_SUPABASE_URL?.trim() &
 
 function ConfigurationNotice() {
   return (
-    <main style={{ minHeight: '100vh', padding: '48px 24px', boxSizing: 'border-box', background: '#0a0a0a', color: '#e8e8e8', fontFamily: 'var(--font-club)' }}>
+    <main className="club-page" style={{ minHeight: '100vh', padding: '48px 24px', boxSizing: 'border-box', color: '#e8e8e8', fontFamily: 'var(--font-club)' }}>
       <div style={{ maxWidth: 600, margin: '0 auto' }}>
         <h1 style={{ color: '#FFD400' }}>The Spinout Club</h1>
         <h2>Club services are temporarily unavailable</h2>
@@ -21,6 +21,6 @@ function ConfigurationNotice() {
 const publicBoards = /^\/leaderboards?(?:\/|$)/.test(window.location.pathname);
 createRoot(document.getElementById('root')).render(
   (window.location.pathname.startsWith('/members') || publicBoards)
-    ? (isSupabaseConfigured ? <Suspense fallback={<div style={{background:'#0a0a0a',color:'#ffd400',padding:40}}>Loading Spinout Club…</div>}><App publicView={publicBoards} /></Suspense> : <ConfigurationNotice />)
+    ? (isSupabaseConfigured ? <Suspense fallback={<div className="club-page" style={{color:'#ffd400',padding:40}}>Loading Spinout Club…</div>}><App publicView={publicBoards} /></Suspense> : <ConfigurationNotice />)
     : <EventsCalendar onMembers={() => window.location.assign('/members')} />
 );
