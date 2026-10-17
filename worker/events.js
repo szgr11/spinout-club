@@ -43,7 +43,8 @@ export function parseDateRange(label, year) {
 }
 const kindOf = (text) => /open test|test.?and.?tune|test & tune|open practice/i.test(text) ? 'Open practice' : /autox|autocross/i.test(text) ? 'Autocross' : /time attack|time trial|challenge/i.test(text) ? 'Track day / time trial' : 'Track day';
 function makeEvent({ title, date, venue, organizer, url, source, kind, note, promotions=[],prices=[],specials=[] }) {
-  const info = trackInfo(venue);
+  // Explicit current event titles take priority over reused venue metadata.
+  const info = trackInfo(title) || trackInfo(venue);
   if (!info || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !safeURL(url)) return null;
   return { title: clean(title).slice(0,180), date, ...info, organizer: canonicalOrganizer(organizer), url: safeURL(url), kind: kind || kindOf(title), note: clean(note).slice(0,220),promotions,prices,specials, sources: [{ id: source.id, name: source.name, url: source.url }], checkedAt: new Date().toISOString() };
 }
@@ -177,13 +178,15 @@ export async function enrichEvents(events,previous={},today=todayPacific()) {
  // Bound requests and concurrency. Unchecked URLs rotate ahead of recently checked URLs.
  for(let i=0;i<due.length;i+=4)await Promise.all(due.slice(i,i+4).map(async url=>{
   const sourceId=events.find(e=>e.url===url)?.sources?.[0]?.id;
-  try{const html=await detailHTML(url);cache[url]={...extractOffers(html,{url,sourceId,today,checkedAt:now}),checkedAt:now,status:'ok'};}
+  try{const html=await detailHTML(url);const offers=extractOffers(html,{url,sourceId,today,checkedAt:now});if(sourceId==='turn8')offers.prices=offers.prices.filter(p=>/HPDE|registration|entry|track.?day/i.test(p.text));cache[url]={...offers,checkedAt:now,status:'ok'};}
   catch{cache[url]={...(cache[url]||{}),checkedAt:now,status:'stale'};}
  }));
  const enriched=events.map(e=>{
   const detail=cache[e.url];const stale=detail?.status!=='ok'||Date.now()-Date.parse(detail.checkedAt)>2*3600000;
   const mark=a=>activeOffers(a,today).map(x=>({...x,stale:stale||x.stale}));
-  return {...e,promotions:combineOffers(publishedOffers(e.promotions,today),mark(publishedOffers(detail?.promotions,today))),prices:combineOffers(activeOffers(e.prices,today),mark(detail?.prices)),offerCheckedAt:detail?.checkedAt||null,offerStatus:detail?.status||'not_checked'};
+  const isTurn8=e.sources?.some(s=>s.id==='turn8');
+  const detailPrices=(detail?.prices||[]).filter(p=>!isTurn8||/HPDE|registration|entry|track.?day/i.test(p.text));
+  return {...e,promotions:combineOffers(publishedOffers(e.promotions,today),mark(publishedOffers(detail?.promotions,today))),prices:combineOffers(activeOffers(e.prices,today),mark(detailPrices)),offerCheckedAt:detail?.checkedAt||null,offerStatus:detail?.status||'not_checked'};
  });
  return {events:enriched,detailCache:cache,offerCoverage:{total:urls.length,checked:urls.filter(u=>cache[u]?.status==='ok').length,checkedThisRefresh:due.length}};
 }

@@ -33,7 +33,7 @@ test('registration profiles exclude cancellations, gift cards and out-of-region 
  assert.equal(rows.length,2);assert.equal(rows[0].date,'2026-12-12');assert.equal(rows[0].track,'Laguna Seca');
 });
 test('Wix dates use the event timezone, without phantom UTC days or drift imports',()=>{
- const data=[{id:'a',slug:'sonoma',title:'Sonoma 10/24 & 10/25',scheduling:{config:{startDate:'2026-10-24T15:00:00Z',endDate:'2026-10-26T01:00:00Z',timeZoneId:'America/Los_Angeles'}}},{id:'b',slug:'drift',title:'Sonoma Drift Event',scheduling:{config:{startDate:'2026-10-24T15:00:00Z'}}}];
+ const data=[{id:'a',slug:'sonoma',title:'Sonoma 10/24 & 10/25',location:{name:'Big Willow'},scheduling:{config:{startDate:'2026-10-24T15:00:00Z',endDate:'2026-10-26T01:00:00Z',timeZoneId:'America/Los_Angeles'}}},{id:'b',slug:'drift',title:'Sonoma Drift Event',scheduling:{config:{startDate:'2026-10-24T15:00:00Z'}}}];
  const rows=parse('turn8',`<script id="wix-warmup-data" type="application/json">${JSON.stringify({events:data})}</script>`);assert.deepEqual(rows.map(e=>e.date),['2026-10-24','2026-10-25']);assert.equal(rows[0].track,'Sonoma');
  assert.deepEqual(calendarDays('2026-02-31'),[]);assert.deepEqual(calendarDays('2026-01-01','2026-12-31'),[]);
 });

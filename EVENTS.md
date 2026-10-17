@@ -13,7 +13,7 @@ Active sources:
 - Extreme Speed's registration cards and Speed District's event cards, using published dates rather than reused URL slugs.
 - OnGrid and West Coast Racing's public Squarespace event lists, using full date metadata.
 - SoCal Drivers Club's registration products, excluding lunches, rentals, passes and transfer fees. Explicit sale products carry their published sale prices.
-- Turn8's public event data embedded in its site, using full dates and each event's timezone; drift events are excluded.
+- Turn8's public event data embedded in its site, using full dates and each event's timezone; drift events are excluded. Explicit track names in current titles take priority over reused venue metadata. Generic prices from multi-option ticket tables are omitted unless they identify entry/registration/HPDE pricing.
 - Hooked on Driving California, Slip Angle Track Events and Fast Toys Club's public MotorsportReg organizer listings. Cancelled/postponed events, gift cards and unrelated venues are excluded.
 
 The compiled list is retained in `src/event-catalog.js`: all 16 organizers appear in the organizer filter and a collapsible directory, including organizers with no upcoming published dates. Twelve organizers plus the Buttonwillow venue feed are automatically checked. VIP Track Days has Instagram-only announcements; TRACKED.llc and Touge2Track do not currently provide a usable schedule at their compiled URLs; FastLane says standalone track days are no longer offered. These four remain external links rather than fabricated automatic feeds. The directory displays those limitations briefly.
