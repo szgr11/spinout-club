@@ -16,7 +16,7 @@ Every refresh reports per-source health. Failed or empty parses retain previousl
 
 ## Discounts, prices and specials
 
-Source adapters collect explicit listing prices and offers. The refresher also checks up to 24 unique linked event pages per run, with four concurrent requests, timeouts, bounded response bodies and an allowlist of organizer/MotorsportReg hosts. Unchecked and oldest pages go first, so coverage rotates. With 51 links, a full pass takes about three hourly runs; the page shows actual checked coverage. Listing updates are hourly even when a detail page waits for its next turn.
+Source adapters collect explicit listing prices and offers. The refresher also checks up to 24 unique linked event pages per run, with four concurrent requests, timeouts, bounded response bodies and an allowlist of organizer/MotorsportReg hosts. Unchecked and oldest pages go first, so coverage rotates. With 51 links, a full pass takes about three hourly runs; the public API reports actual checked coverage. Listing updates are hourly even when a detail page waits for its next turn. The page keeps only a compact update timestamp; implementation details stay in this document.
 
 Published discount text is shown verbatim in short excerpts with the evidence URL, check time and explicit deadline when present. Early-bird offers, coupons, special rates and dated special-event components get visible badges. Prices retain their published context; gate fees, spectators, rentals and other add-ons are not treated as track-day admission. No discount amount is inferred, and no badge does not prove that a discount is unavailable.
 

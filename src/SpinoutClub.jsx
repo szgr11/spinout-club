@@ -932,7 +932,6 @@ function Footer() {
     <footer style={{ borderTop: `1px solid ${C.border}`, marginTop: 64, padding: '20px 24px' }}>
       <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', fontFamily: mono, fontSize: 10, color: C.textFaint, letterSpacing: 1 }}>
         <div>◆ THE SPINOUT CLUB // EST. 2024</div>
-        <div>SEND IT — BUT BRING IT BACK</div>
       </div>
     </footer>
   );
@@ -1017,7 +1016,6 @@ function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, billboa
         </div>
       )}
 
-      {!session && <p style={{fontFamily:mono,fontSize:12,color:C.textDim,lineHeight:1.8,marginBottom:24}}>PUBLIC LEADERBOARDS · Browse every track without an account. <a href="/members" style={{color:C.accent}}>Sign in to log your times.</a></p>}
       {/* Track selector */}
       <div style={{ marginBottom: 28 }}>
         <div style={{ fontFamily: mono, fontSize: 10, color: C.textDim, letterSpacing: 2, marginBottom: 12 }}>
