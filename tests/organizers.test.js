@@ -7,7 +7,7 @@ const parse=(id,html)=>parseOrganizer(html,SOURCES.find(s=>s.id===id),'2026-10-1
 
 test('catalog retains all 16 organizers without pretending external-only links are feeds',()=>{
  assert.equal(ORGANIZERS.length,16);assert.equal(new Set(ORGANIZERS.map(o=>o.id)).size,16);
- assert.equal(SOURCES.length,15);assert.ok(!SOURCES.some(s=>s.id==='viptrackdays'||s.id==='fastlane'));
+ assert.equal(SOURCES.length,23);assert.ok(!SOURCES.some(s=>s.id==='viptrackdays'||s.id==='fastlane'));
 });
 test('NASA ordinal dates expand correctly and racing-only cards are excluded',()=>{
  const card=types=>`<div class="event-card"><div class="display-name">#5208: Nov 7th - 8th, 2026</div><div class="at"><p>At Sonoma Raceway</p><p class="info-text">${types}</p></div><div class="register"><a href="/events/5208">Register</a></div></div>`;
