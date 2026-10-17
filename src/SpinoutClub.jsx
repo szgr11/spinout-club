@@ -200,7 +200,7 @@ export default function App({ publicView = false }) {
       publicSupabase.from('leaderboard_laps').select('*'),
       publicSupabase.from('leaderboard_tracks').select('*')
     ]);
-    if(lapRows.error || trackRows.error){showToast('Could not load the leaderboard. Please refresh shortly.','error');return;}
+    if(lapRows.error || trackRows.error){showToast('Could not load the Spinner boards. Please refresh shortly.','error');return;}
     setLaps(deduplicateLaps(lapRows.data || []).map(l=>({...l,_key:l.id})));
     setCustomTracks(trackRows.data || []);
   };
@@ -866,7 +866,7 @@ function Logo({ size = 'normal' }) {
 
 function Header({ session, onLogout, view, setView, pendingCount }) {
   const tabs = [
-    { id: 'leaderboards', label: 'BOARDS', icon: Trophy, href: '/leaderboard' },
+    { id: 'leaderboards', label: 'SPINNER BOARDS', icon: Trophy, href: '/leaderboard' },
     ...(session ? [{ id: 'submit', label: 'LOG A TIME', icon: Plus, href: '/members' }, { id: 'profile', label: 'PROFILE', icon: User }] : []),
   ];
   if (session?.role === 'admin') tabs.push({ id: 'admin', label: 'CONTROL', icon: Shield, badge: pendingCount });
@@ -1069,7 +1069,7 @@ function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, billboa
       }}>
         <div>
           <div style={{ fontFamily: mono, fontSize: 10, color: C.textFaint, letterSpacing: 3, marginBottom: 4 }}>
-            LEADERBOARD // {trackInfo.region.toUpperCase()}
+            SPINNER BOARD // {trackInfo.region.toUpperCase()}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
             <h1 style={{ margin: 0, fontFamily: mono, fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: 1 }}>
@@ -1436,7 +1436,7 @@ function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
           marginTop: 12, padding: '10px 14px', background: 'rgba(255,212,0,0.06)',
           border: `1px solid ${C.accentDim}`, fontFamily: mono, fontSize: 11, color: C.accent
         }}>
-          ⓘ Submissions are reviewed by admin before appearing on the leaderboard.
+          ⓘ Submissions are reviewed by admin before appearing on the Spinner boards.
         </div>
       </div>
 

@@ -36,3 +36,8 @@ test('detail checks are bounded, rotate unchecked URLs first and reject untruste
   const second=await enrichEvents(events,first.detailCache,'2026-10-17');assert.equal(calls,26);assert.equal(second.offerCoverage.checked,26);
  }finally{globalThis.fetch=original;}
 });
+
+test('ticket sale controls and generic discount headings are not discount offers',()=>{
+ const r=extractOffers('<main><p>Sale ends</p><p>Sale ended</p><p>Sale Dates</p><p>Goes On Sale:</p><p>Sales End:</p><p>Discounts Available!</p><p>Sale Price: $400 (Original Price: $475)</p></main>',options);
+ assert.equal(r.promotions.length,1);assert.match(r.promotions[0].text,/\$400/);
+});

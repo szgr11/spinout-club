@@ -1,11 +1,11 @@
 # The Spinout Club
 
-React + Vite source for the Spinout Club track community and driver leaderboards. Supabase remains the shared backend.
+React + Vite source for the Spinout Club track community and Spinner boards. Supabase remains the shared backend.
 
 ## Public pages and member tools
 
 - `/` and `/events`: public track-day calendar, source links, published offers and special events.
-- `/leaderboard` (also `/leaderboards`): public approved lap times and track filters. No account is required.
+- `/leaderboard` (also `/leaderboards`): public Spinner boards with approved lap times and track filters. No account is required.
 - `/members`: sign in to log a time, manage a profile or link Google. Approved membership is required for submissions; admin review remains protected.
 
 All website text uses self-hosted JetBrains Mono Variable, including headings, navigation, tables, forms and member tools. Font files are bundled with the site. The font family is shared through `src/typography.js` and `src/global.css`; no Google Fonts stylesheet is fetched.

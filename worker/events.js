@@ -1,10 +1,13 @@
 import { load } from 'cheerio/slim';
-import {extractOffers,activeOffers,combineOffers} from './offers.js';
+import {extractOffers,activeOffers,publishedOffers,combineOffers} from './offers.js';
+import {ORGANIZERS,canonicalOrganizer} from '../src/event-catalog.js';
+import {parseOrganizerDocument} from './organizers.js';
 
 export const SOURCES = [
   { id: 'speedventures', name: 'Speed Ventures', url: 'https://www.speedventures.com/events/Default.aspx' },
   { id: 'speedsf', name: 'SpeedSF', url: 'https://www.speedsf.com/events-registration/' },
   { id: 'buttonwillow', name: 'Buttonwillow Raceway', url: 'https://buttonwillowraceway.com/events/' },
+  ...ORGANIZERS.filter(s=>s.adapter&&!['speedventures','speedsf'].includes(s.id)),
 ];
 const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const clean = (v) => String(v || '').replace(/\s+/g, ' ').trim();
@@ -14,19 +17,19 @@ export function safeURL(value, base) {
 }
 function trackInfo(text) {
   const t = text.toLowerCase();
-  if (/buttonwillow/.test(t)) return { track: /circuit/.test(t) ? 'Buttonwillow · Circuit' : /classic/.test(t) ? 'Buttonwillow · Classic' : 'Buttonwillow', region: 'SoCal' };
+  if (/buttonwillow/.test(t)) return { track: /circuit/.test(t) ? 'Buttonwillow · Circuit' : /classic|13\s*(?:cw|ccw)|(?:cw|ccw)\s*#?\s*13/.test(t) ? 'Buttonwillow · Classic' : 'Buttonwillow', region: 'SoCal' };
   if (/chuckwalla/.test(t)) return { track: 'Chuckwalla', region: 'SoCal' };
   if (/streets/.test(t)) return { track: 'Streets of Willow', region: 'SoCal' };
   if (/willow/.test(t)) return { track: 'Big Willow', region: 'SoCal' };
   if (/laguna|weathertech/.test(t)) return { track: 'Laguna Seca', region: 'NorCal' };
   if (/sonoma/.test(t)) return { track: 'Sonoma', region: 'NorCal' };
-  if (/thunderhill/.test(t)) return { track: /west/.test(t) ? 'Thunderhill · West' : /east/.test(t) ? 'Thunderhill · East' : /5.?mile|5mi/.test(t) ? 'Thunderhill · 5 mile' : 'Thunderhill', region: 'NorCal' };
+  if (/thunderhill/.test(t)) return { track: /east.*west|west.*east/.test(t) ? 'Thunderhill · East & West' : /3\s*(?:&|and)\s*5/.test(t) ? 'Thunderhill · 3 & 5 mile' : /5.?mile|5mi/.test(t) ? 'Thunderhill · 5 mile' : /west/.test(t) ? 'Thunderhill · West' : /east|3.?mile/.test(t) ? 'Thunderhill · East' : 'Thunderhill', region: 'NorCal' };
   if (/spring mountain/.test(t)) return { track: 'Spring Mountain', region: 'Nevada' };
   if (/las vegas/.test(t)) return { track: 'Las Vegas Motor Speedway', region: 'Nevada' };
   return null;
 }
 export function parseDateRange(label, year) {
-  const m = clean(label).match(/([A-Za-z]+)\s+(\d{1,2})(?:\s*[-–—&]\s*(?:([A-Za-z]+)\s*)?(\d{1,2}))?/);
+  const m = clean(label).replace(/(\d)(st|nd|rd|th)\b/gi,'$1').match(/([A-Za-z]+)\s+(\d{1,2})(?:\s*[-–—&]\s*(?:([A-Za-z]+)\s*)?(\d{1,2}))?/);
   if (!m) return [];
   const startMonth = months.indexOf(m[1].toLowerCase().slice(0,3));
   const endMonth = m[3] ? months.indexOf(m[3].toLowerCase().slice(0,3)) : startMonth;
@@ -42,8 +45,9 @@ const kindOf = (text) => /open test|test.?and.?tune|test & tune|open practice/i.
 function makeEvent({ title, date, venue, organizer, url, source, kind, note, promotions=[],prices=[],specials=[] }) {
   const info = trackInfo(venue);
   if (!info || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !safeURL(url)) return null;
-  return { title: clean(title).slice(0,180), date, ...info, organizer: clean(organizer), url: safeURL(url), kind: kind || kindOf(title), note: clean(note).slice(0,220),promotions,prices,specials, sources: [{ id: source.id, name: source.name, url: source.url }], checkedAt: new Date().toISOString() };
+  return { title: clean(title).slice(0,180), date, ...info, organizer: canonicalOrganizer(organizer), url: safeURL(url), kind: kind || kindOf(title), note: clean(note).slice(0,220),promotions,prices,specials, sources: [{ id: source.id, name: source.name, url: source.url }], checkedAt: new Date().toISOString() };
 }
+export const parseOrganizer=(html,source,today=todayPacific())=>parseOrganizerDocument(html,source,{makeEvent,parseDateRange,today});
 export function parseSpeedVentures(html) {
   const $ = load(html); const events = []; const source = SOURCES[0];
   $('#getonthetrack a.absolutelink').each((_, a) => {
@@ -103,7 +107,7 @@ export function parseButtonwillow(data) {
     return events.filter(Boolean);
   });
 }
-const organizerKey = (s) => s.toLowerCase().replace(/[^a-z0-9]/g,'').replace('speedventuresoperationsllc','speedventures');
+const organizerKey = (s) => canonicalOrganizer(s).toLowerCase().replace(/[^a-z0-9]/g,'');
 export function mergeEvents(events, today = todayPacific()) {
   const merged = new Map();
   for (const e of events.filter(e => e?.date >= today)) {
@@ -150,9 +154,10 @@ export async function fetchSource(source, today = todayPacific()) {
     }
     return all;
   }
+  if(source.adapter)return parseOrganizer(await get(source.feedUrl||source.url),source,today);
   throw new Error('Unknown source');
 }
-const DETAIL_HOSTS=new Set(['speedventures.com','www.speedventures.com','speedsf.com','www.speedsf.com','buttonwillowraceway.com','www.buttonwillowraceway.com','www.motorsportreg.com','speedsf.motorsportreg.com','msreg.com']);
+const DETAIL_HOSTS=new Set(['speedventures.com','www.speedventures.com','speedsf.com','www.speedsf.com','buttonwillowraceway.com','www.buttonwillowraceway.com','www.motorsportreg.com','speedsf.motorsportreg.com','hookedondriving.motorsportreg.com','turn8.motorsportreg.com','msreg.com',...ORGANIZERS.filter(s=>s.adapter).flatMap(s=>[new URL(s.url).hostname,s.feedUrl?new URL(s.feedUrl).hostname:undefined]).filter(Boolean)]);
 const detailAllowed=url=>{try{const u=new URL(url);return u.protocol==='https:'&&DETAIL_HOSTS.has(u.hostname);}catch{return false;}};
 async function detailHTML(url) {
  for(let redirects=0;redirects<4;redirects++){
@@ -178,7 +183,7 @@ export async function enrichEvents(events,previous={},today=todayPacific()) {
  const enriched=events.map(e=>{
   const detail=cache[e.url];const stale=detail?.status!=='ok'||Date.now()-Date.parse(detail.checkedAt)>2*3600000;
   const mark=a=>activeOffers(a,today).map(x=>({...x,stale:stale||x.stale}));
-  return {...e,promotions:combineOffers(activeOffers(e.promotions,today),mark(detail?.promotions)),prices:combineOffers(e.prices,mark(detail?.prices)),offerCheckedAt:detail?.checkedAt||null,offerStatus:detail?.status||'not_checked'};
+  return {...e,promotions:combineOffers(publishedOffers(e.promotions,today),mark(publishedOffers(detail?.promotions,today))),prices:combineOffers(activeOffers(e.prices,today),mark(detail?.prices)),offerCheckedAt:detail?.checkedAt||null,offerStatus:detail?.status||'not_checked'};
  });
  return {events:enriched,detailCache:cache,offerCoverage:{total:urls.length,checked:urls.filter(u=>cache[u]?.status==='ok').length,checkedThisRefresh:due.length}};
 }
@@ -188,7 +193,7 @@ export async function refreshEvents(kv) {
  const events=[],sources=[],sourceSnapshots={};
  results.forEach((result,i)=>{
   const source=SOURCES[i],old=previous?.sources?.find(s=>s.id===source.id);
-  if(result.status==='fulfilled'&&result.value.length){
+  if(result.status==='fulfilled'&&(result.value.length||result.value.verifiedEmpty)){
    sourceSnapshots[source.id]=result.value;events.push(...result.value);sources.push({...source,status:'ok',lastSuccess:new Date().toISOString(),count:result.value.length});
   }else{
    const prior=previous?.sourceSnapshots?.[source.id]||(previous?.events||[]).filter(e=>e.sources.some(s=>s.id===source.id)).map(e=>({...e,sources:e.sources.filter(s=>s.id===source.id),promotions:(e.promotions||[]).filter(x=>x.sourceId===source.id),prices:(e.prices||[]).filter(x=>x.sourceId===source.id)}));
