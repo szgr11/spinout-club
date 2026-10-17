@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "raspy-water-4eb5",
+  "account_id": "260a0ada5fbdf9925db5e9d497b70ddc",
+  "compatibility_date": "2026-05-13",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

@@ -47,6 +47,6 @@ The recovered component uses custom username/password fields and a local session
 
 ## Hosting
 
-The original project used Cloudflare Pages. To connect this repository there, use build command `npm run build`, output directory `dist`, and set both Supabase build variables in Cloudflare Pages. This repository setup does not change the current domain, deployment, or Supabase data.
+Cloudflare API inspection confirms the live site uses the existing static-assets Worker `raspy-water-4eb5`. The older notes described Pages, but the repository now targets the verified Worker using `wrangler.jsonc`. See `CLOUDFLARE.md` for native Workers Builds setup and the optional manual GitHub Actions workflow. Source preparation has not deployed a replacement or changed Supabase data.
 
 The existing project reference and verification notes are in `supabase/README.md`. The client also accepts `VITE_SUPABASE_ANON_KEY` for compatibility with older hosting settings.

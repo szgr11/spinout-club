@@ -1,31 +1,55 @@
-# Connect the existing Cloudflare Pages site
+# Existing Cloudflare deployment
 
 Repository: https://github.com/szgr11/spinout-club
 
-Existing custom domain: https://spinoutclub.cc/
+Live domain: https://spinoutclub.cc/
 
-The earlier site was deployed using Cloudflare Pages Direct Upload. Cloudflare supports deploying to that same project from GitHub Actions with Wrangler. This preserves the existing custom-domain assignment; it does not require switching the Pages project to native Git integration.
+Cloudflare API inspection on October 16, 2026 confirmed that the domain is attached to the static-assets Worker `raspy-water-4eb5`. The account has no Pages projects.
 
-## Prepared deployment workflow
-
-`.github/workflows/cloudflare-pages.yml` builds `main` using Node.js 24, `npm ci`, and `npm run build`, then uploads `dist/` to the configured existing Pages project. It is currently manual-only (`workflow_dispatch`); uploading this file does not start a deployment. Automatic deployments can be enabled after the account and project have been verified.
-
-Set these repository variables in GitHub Settings > Secrets and variables > Actions > Variables:
-
-| Variable | Value |
+| Setting | Value |
 | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | The account owning the current Pages project |
-| `CLOUDFLARE_PAGES_PROJECT` | The exact existing Cloudflare Pages project name; do not use the custom domain here |
-| `VITE_SUPABASE_URL` | `https://wzdqnzfoaaxmnkvxtlpt.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | The existing project's public publishable key |
+| Account ID | `260a0ada5fbdf9925db5e9d497b70ddc` |
+| Worker name | `raspy-water-4eb5` |
+| Worker tag | `39426bcf428844d3a8be016ebba77c49` |
+| Compatibility date | `2026-05-13`, matching the existing deployment |
+| Production branch | `main` |
+| Build command | `npm run build` |
+| Deploy command | `npm run deploy -- --keep-vars` |
+| Static asset directory | `dist/` |
 
-Set `CLOUDFLARE_API_TOKEN` as a repository **secret**. Scope it to the owning Cloudflare account with Cloudflare Pages Edit permission. Do not put this token in source files or Vite variables.
+`wrangler.jsonc` targets the existing Worker. The domain assignment is managed in Cloudflare.
 
-Cloudflare account access, project name, and GitHub repository variables/secrets have not yet been configured. Neither the domain nor the existing deployment has been changed by this repository preparation.
+## Native Workers Builds
 
-Before running the workflow, confirm the project name and review differences between this recovered source and the currently deployed site. From GitHub Actions, choose the workflow, select `main`, and run it. Confirm the deployment in Cloudflare and check `https://spinoutclub.cc/` afterward.
+Authorize the Cloudflare Workers and Pages GitHub App for **only** `szgr11/spinout-club`:
+
+https://github.com/apps/cloudflare-workers-and-pages
+
+Then connect the repository to the existing Worker using Workers Builds, with the commands above, root directory `/`, and production branch `main`.
+
+Set these **build variables** in Cloudflare:
+
+- `VITE_SUPABASE_URL=https://wzdqnzfoaaxmnkvxtlpt.supabase.co`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`: the existing project's public publishable key.
+- `NODE_VERSION=24`
+
+The Supabase variables must be available while Vite builds, rather than only at Worker request time. Never use a Supabase server secret in this frontend.
+
+Cloudflare MCP account access is verified. The repository-link attempt returned a disconnected-Git-account error. GitHub App authorization and the native build trigger are pending. No deployment has been started by this source preparation.
+
+## Manual GitHub Actions alternative
+
+`.github/workflows/cloudflare-workers.yml` can deploy the same Worker from `main`. It is manual-only and has not been run. It requires:
+
+- Repository **secret** `CLOUDFLARE_API_TOKEN`, scoped to this Cloudflare account with Workers Scripts Write access.
+- Repository **variable** `VITE_SUPABASE_PUBLISHABLE_KEY`, containing the public client key.
+
+The account ID and Supabase URL are configured in the workflow. Never put a Cloudflare token or Supabase service-role key in a Vite variable or committed file.
+
+The previous Pages workflow was removed after inspecting the real hosting configuration.
 
 ## References
 
-- https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/
-- https://developers.cloudflare.com/pages/get-started/direct-upload/
+- https://developers.cloudflare.com/workers/ci-cd/builds/
+- https://developers.cloudflare.com/workers/static-assets/
+- https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/

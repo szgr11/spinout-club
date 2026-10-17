@@ -1,14 +1,13 @@
-name: Deploy existing Cloudflare Pages project
+name: Deploy existing Cloudflare Worker
 
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
-  deployments: write
 
 concurrency:
-  group: cloudflare-pages-production
+  group: cloudflare-workers-production
   cancel-in-progress: false
 
 jobs:
@@ -17,16 +16,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+      CLOUDFLARE_ACCOUNT_ID: '260a0ada5fbdf9925db5e9d497b70ddc'
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_URL: https://wzdqnzfoaaxmnkvxtlpt.supabase.co
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
     steps:
       - name: Check deployment configuration
         shell: bash
         run: |
-          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_PAGES_PROJECT CLOUDFLARE_API_TOKEN VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY; do
+          for name in CLOUDFLARE_API_TOKEN VITE_SUPABASE_PUBLISHABLE_KEY; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing repository deployment setting: $name"
               exit 1
@@ -43,10 +41,5 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
-      - name: Deploy to existing Pages project
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=main
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy existing Worker
+        run: npm run deploy -- --keep-vars
