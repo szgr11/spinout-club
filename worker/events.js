@@ -2,6 +2,7 @@ import { load } from 'cheerio/slim';
 import {extractOffers,activeOffers,publishedOffers,combineOffers} from './offers.js';
 import {ORGANIZERS,canonicalOrganizer} from '../src/event-catalog.js';
 import {parseOrganizerDocument} from './organizers.js';
+import {TRACK_SOURCES,parseTrackCalendar} from './track-calendars.js';
 
 export const SOURCES = [
   { id: 'speedventures', name: 'Speed Ventures', url: 'https://www.speedventures.com/events/Default.aspx' },
@@ -10,6 +11,7 @@ export const SOURCES = [
   ...ORGANIZERS.filter(s=>s.adapter&&!['speedventures','speedsf'].includes(s.id)),
   {id:'nasa-socal-calendar',name:'NASA SoCal schedule',url:'https://nasasocal.com/find-an-event/',adapter:'nasa-calendar',regionLabel:'SoCal'},
   {id:'nasa-norcal-calendar',name:'NASA NorCal schedule',url:'https://nasanorcal.com/tag/sonoma/',adapter:'nasa-calendar',regionLabel:'NorCal'},
+  ...TRACK_SOURCES,
 ];
 const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const clean = (v) => String(v || '').replace(/\s+/g, ' ').trim();
@@ -51,6 +53,7 @@ function makeEvent({ title, date, venue, organizer, url, source, kind, note, pro
   return { title: clean(title).slice(0,180), date, ...info, organizer: canonicalOrganizer(organizer), url: safeURL(url), kind: kind || kindOf(title), note: clean(note).slice(0,220),promotions,prices,specials, sources: [{ id: source.id, name: source.name, url: source.url }], checkedAt: new Date().toISOString() };
 }
 export const parseOrganizer=(html,source,today=todayPacific())=>parseOrganizerDocument(html,source,{makeEvent,parseDateRange,today});
+export const parseTrack=(input,source,today=todayPacific())=>parseTrackCalendar(input,source,{makeEvent,parseDateRange,today});
 export function parseSpeedVentures(html) {
   const $ = load(html); const events = []; const source = SOURCES[0];
   $('#getonthetrack a.absolutelink').each((_, a) => {
@@ -117,13 +120,13 @@ export function mergeEvents(events, today = todayPacific()) {
   // A crossover announcement may omit the circuit named by its hosting region.
   // Resolve it only when exactly one specific configuration agrees.
   const nasaConfigurations=new Map();
-  for(const e of upcoming)if(organizerKey(e.organizer)==='nasa'&&/^(Buttonwillow|Thunderhill) · /.test(e.track)){
-    const key=e.date+'|'+e.track.split(' · ')[0];
+  for(const e of upcoming)if(/^(Buttonwillow|Thunderhill) · /.test(e.track)){
+    const key=organizerKey(e.organizer)+'|'+e.date+'|'+e.track.split(' · ')[0];
     if(!nasaConfigurations.has(key))nasaConfigurations.set(key,new Set());
     nasaConfigurations.get(key).add(e.track);
   }
   for (const raw of upcoming) {
-    const matches=raw.scheduleOnly&&organizerKey(raw.organizer)==='nasa'?nasaConfigurations.get(raw.date+'|'+raw.track):null;
+    const matches=raw.scheduleOnly?nasaConfigurations.get(organizerKey(raw.organizer)+'|'+raw.date+'|'+raw.track):null;
     const e=matches?.size===1?{...raw,track:[...matches][0]}:raw;
     const key = `${e.date}|${e.track}|${organizerKey(e.organizer)}|${e.kind === 'Autocross' ? 'autox' : 'track'}`;
     const previous = merged.get(key);
@@ -132,7 +135,7 @@ export function mergeEvents(events, today = todayPacific()) {
       previous.prices=combineOffers(previous.prices,e.prices);
       previous.specials=[...new Set([...(previous.specials||[]),...(e.specials||[])])];
       previous.sources = [...new Map([...previous.sources,...e.sources].map(s=>[s.id,s])).values()];
-      if (previous.scheduleOnly&&!e.scheduleOnly) { previous.url=e.url;previous.title=e.title;previous.note=e.note;previous.kind=e.kind;delete previous.scheduleOnly; }
+      if (previous.scheduleOnly&&!e.scheduleOnly) { previous.url=e.url;previous.title=e.title;previous.note=e.note;previous.kind=e.kind;delete previous.scheduleOnly;delete previous.trackCalendar; }
       else if (previous.sources[0].id === 'buttonwillow' && e.sources[0].id !== 'buttonwillow') { previous.url=e.url; previous.title=e.title; }
       if(previous.scheduleOnly&&previous.kind==='Track event'&&e.kind==='Track day')previous.kind=e.kind;
     } else merged.set(key, { ...e, id: key });
@@ -155,6 +158,18 @@ async function get(url, asJSON = false) {
   return asJSON ? JSON.parse(body) : body;
 }
 export async function fetchSource(source, today = todayPacific()) {
+  if(TRACK_SOURCES.some(s=>s.id===source.id)){
+    if(source.adapter==='chuckwalla-track')return parseTrack(await get(`${source.url}/data?status=2&start=${today}&end=${Number(today.slice(0,4))+2}-01-01`,true),source,today);
+    if(source.adapter==='spring-track'){
+      const first=await get(source.url),$=load(first);
+      const pages=Math.max(1,...$('a[href]').toArray().map(a=>Number($(a).attr('href').match(/^\/calendar\/Page-(\d+)$/)?.[1]||1)));
+      if(pages>30)throw new Error('Spring Mountain calendar exceeds page limit');
+      const rows=[...parseTrack(first,source,today)];
+      for(let i=2;i<=pages;i+=3){const batch=await Promise.all(Array.from({length:Math.min(3,pages-i+1)},(_,n)=>get(new URL(`/calendar/Page-${i+n}`,source.url).href).then(html=>parseTrack(html,source,today))));rows.push(...batch.flat());}
+      Object.defineProperty(rows,'verifiedEmpty',{value:true});return rows;
+    }
+    return parseTrack(await get(source.feedUrl||source.url),source,today);
+  }
   if (source.id === 'speedventures') return parseSpeedVentures(await get(source.url));
   if (source.id === 'speedsf') {
     const year=Number(today.slice(0,4));
