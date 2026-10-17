@@ -10,3 +10,4 @@ dist/
 research/
 .dev.vars
 .dev.vars.*
+supabase/.temp/

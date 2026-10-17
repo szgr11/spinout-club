@@ -25,7 +25,7 @@ The Cloudflare Workers and Pages GitHub App is connected to `szgr11/spinout-club
 
 https://github.com/apps/cloudflare-workers-and-pages
 
-Workers Builds is enabled for the existing Worker, with the commands above, root directory `/`, and production branch `main`. Pushes to `main` automatically build and deploy. Preview builds are also enabled.
+Workers Builds is enabled for the existing Worker, with the commands above, root directory `/`, and production branch `main`. Pushes to `main` automatically build and deploy. Preview builds are also enabled. The `previews` block uses the separate `spinout-track-events-preview` KV namespace so previews do not write to the production calendar cache.
 
 These **build variables** are configured for production and preview builds in Cloudflare:
 
