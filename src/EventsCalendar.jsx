@@ -12,7 +12,7 @@ export default function EventsCalendar({onMembers}) {
   const [region,setRegion]=useState('All regions'),[track,setTrack]=useState('All tracks'),[organizer,setOrganizer]=useState('All organizers'),[kind,setKind]=useState('All types'),[selected,setSelected]=useState(''),[offersOnly,setOffersOnly]=useState(false);
   useEffect(()=>{
     let controller;
-    const reload=()=>{controller?.abort();controller=new AbortController();fetch('/api/events',{signal:controller.signal}).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.error||'Unable to load events');setData(j);setError('');}).catch(e=>{if(e.name!=='AbortError')setError(e.message);});};
+    const reload=()=>{controller?.abort();controller=new AbortController();fetch('/api/events',{signal:controller.signal,cache:'no-cache'}).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.error||'Unable to load events');setData(j);setError('');}).catch(e=>{if(e.name!=='AbortError')setError(e.message);});};
     const onVisible=()=>{if(document.visibilityState==='visible')reload();};
     reload();const timer=setInterval(onVisible,15*60*1000);document.addEventListener('visibilitychange',onVisible);
     return()=>{clearInterval(timer);controller?.abort();document.removeEventListener('visibilitychange',onVisible);};
@@ -22,12 +22,14 @@ export default function EventsCalendar({onMembers}) {
   const gridStart=new Date(month);gridStart.setDate(1-month.getDay());
   const days=Array.from({length:42},(_,i)=>{const d=new Date(gridStart);d.setDate(d.getDate()+i);return d;});
   const monthKey=dateKey(month).slice(0,7);
+  const yearKey=String(month.getFullYear());
+  const counts=[[events.filter(e=>e.date.startsWith(monthKey)).length,month.toLocaleDateString('en-US',{month:'short',year:'numeric'})],[events.filter(e=>e.date.startsWith(yearKey+'-')).length,yearKey+' upcoming'],[events.length,'All upcoming']];
   const visible=events.filter(e=>selected?e.date===selected:e.date.startsWith(monthKey));
   const changeMonth=n=>{setMonth(new Date(month.getFullYear(),month.getMonth()+n,1,12));setSelected('');};
   return <div className="events-page">
     <header className="events-nav"><a className="events-logo" href="/events">◆ SPINOUT <span>// CLUB</span></a><div><a className="events-boards" href="/leaderboard">SPINNER BOARDS ↗</a><span className="public-tag">OPEN TO EVERYONE</span><button className="events-outline" onClick={onMembers}>LOG A TIME <ArrowUpRight size={14}/></button></div></header>
     <main className="events-main">
-      <div className="events-heading"><h1>Track days<span>.</span></h1><div className="events-tally"><strong>{events.length.toString().padStart(2,'0')}</strong><span>UPCOMING DAYS</span></div></div>
+      <div className="events-heading"><h1>Track days<span>.</span></h1><div className="events-tallies" aria-label="Upcoming event day counts">{counts.map(([count,label])=><div className="events-tally" key={label}><strong>{data?count.toString().padStart(2,'0'):'—'}</strong><span>{label}</span></div>)}</div></div>
       <section className="events-toolbar" aria-label="Event filters">
         {[[region,setRegion,'Region',['All regions',...new Set([...CALENDAR_TRACKS.map(t=>t.region),...all.map(e=>e.region)])]],[track,setTrack,'Track',['All tracks',...new Set([...CALENDAR_TRACKS.map(t=>t.name),...all.map(e=>e.track)])]],[organizer,setOrganizer,'Organizer',['All organizers',...new Set([...ORGANIZERS.map(o=>o.name),...all.map(e=>e.organizer)])]],[kind,setKind,'Event type',['All types',...new Set(all.map(e=>e.kind))]]].map(([value,setter,label,options])=><label key={label}>{label}<select value={value} onChange={e=>{setter(e.target.value);setSelected('');}}>{options.sort((a,b)=>a.startsWith('All')?-1:b.startsWith('All')?1:a.localeCompare(b)).map(o=><option key={o}>{o}</option>)}</select></label>)}
       </section>
