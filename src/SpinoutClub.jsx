@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { deduplicateLaps } from './laps.js';
+import { SecureAuth, GoogleButton } from './SecureAuth.jsx';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Trophy, Clock, User, LogOut, Plus, Check, X, Shield, Flag, Thermometer, Calendar, Zap, ChevronRight, AlertCircle, Edit2, Ban, MapPin, Megaphone, Lock, Settings, Pin } from 'lucide-react';
 
@@ -141,47 +142,61 @@ export default function App() {
   const [customTracks, setCustomTracks] = useState([]);
   const [billboards, setBillboards] = useState([]);
   const [reports, setReports] = useState([]);
-  const [authMode, setAuthMode] = useState('login');
+  const [authUser, setAuthUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [application, setApplication] = useState(null);
   const [toast, setToast] = useState(null);
 
   // Merged track list, used everywhere
   const allTracks = useMemo(() => [...BUILTIN_TRACKS, ...customTracks], [customTracks]);
 
-  // ----- INITIAL LOAD -----
+  // Supabase verifies signed sessions. Retired browser-only sessions are discarded.
   useEffect(() => {
+    let active = true;
+    localStorage.removeItem('spinout_session');
+    supabase.auth.getSession().then(({data,error}) => {
+      if (!active) return;
+      setAuthUser(error ? null : data.session?.user || null);
+      setAuthReady(true);
+    });
+    const {data:{subscription}} = supabase.auth.onAuthStateChange((_event, authSession) => {
+      setAuthUser(authSession?.user || null);
+    });
+    return () => { active=false; subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) return;
+    let active=true;
     (async () => {
-      const sessRaw = localStorage.getItem('spinout_session');
-
-      if (sessRaw) {
-        try {
-          const sess = JSON.parse(sessRaw);
-          const { data: u } = await supabase
-            .from('profiles')
-            .select('username,role,nickname,banned')
-            .eq('username', sess.username)
-            .maybeSingle();
-
-          if (u && !u.banned) {
-            setSession({ username: u.username, role: u.role, nickname: u.nickname });
-          } else {
-            localStorage.removeItem('spinout_session');
-          }
-        } catch {
-          localStorage.removeItem('spinout_session');
+      setLoaded(false);
+      setSession(null);
+      setApplication(null);
+      setLaps([]); setUsers({}); setPending({}); setPendingLaps([]); setReports([]); setBillboards([]);
+      if (authUser) {
+        const {data:profile,error} = await supabase.rpc('spinout_account');
+        if (!active) return;
+        if (error) showToast('Member sign-in is temporarily unavailable. Please try again shortly.', 'error');
+        else if (profile && !profile.banned) {
+          setSession(profile);
+          await refreshData();
+        } else if (profile?.banned) showToast('This membership is suspended. Contact a club admin.', 'error');
+        else {
+          const {data:p} = await supabase.from('pending_users').select('username,nickname,submitted_at').eq('auth_user_id',authUser.id).maybeSingle();
+          if(active)setApplication(p);
         }
       }
-
-      await refreshData();
-      setLoaded(true);
+      if(active)setLoaded(true);
     })();
-  }, []);
+    return () => {active=false;};
+  }, [authUser?.id,authReady]);
 
   const refreshData = async () => {
     const [lapsRes, pendingLapsRes, usersRes, pendingUsersRes, tracksRes, billboardsRes, reportsRes] = await Promise.all([
       supabase.from('laps').select('id,track,driver,time,car,hp,tire,temp,date,organizer,type,submitted_by,submitted_at,approved_by,approved_at,history'),
       supabase.from('pending_laps').select('id,track,driver,time,car,hp,tire,temp,date,organizer,type,image,submitted_by,submitted_at'),
-      supabase.from('profiles').select('username,password,nickname,role,banned,joined_at'),
-      supabase.from('pending_users').select('username,password,nickname,reason,submitted_at'),
+      supabase.from('profiles').select('username,nickname,role,banned,joined_at'),
+      supabase.from('pending_users').select('username,nickname,reason,submitted_at'),
       supabase.from('tracks').select('id,name,variant,region,added_by,created_at'),
       supabase.from('billboards').select('id,title,body,pinned,posted_by,posted_at'),
       supabase.from('reports').select('id,lap_id,reason,reporter,reported_at')
@@ -221,7 +236,6 @@ export default function App() {
     (usersRes.data || []).forEach(u => {
       userData[u.username] = {
         username: u.username,
-        password: u.password,
         nickname: u.nickname,
         role: u.role,
         banned: u.banned,
@@ -234,7 +248,6 @@ export default function App() {
     (pendingUsersRes.data || []).forEach(p => {
       pendingData[p.username] = {
         username: p.username,
-        password: p.password,
         nickname: p.nickname,
         reason: p.reason,
         submittedAt: p.submitted_at
@@ -281,136 +294,22 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ----- AUTH -----
-  const handleLogin = async (username, password) => {
-    const u = users[username];
-    if (!u) {
-      if (pending[username]) {
-        showToast('Your application is still pending review', 'warn');
-        return;
-      }
-      showToast('No account found with that username', 'error');
-      return;
-    }
-    if (u.banned) {
-      showToast('This account has been suspended', 'error');
-      return;
-    }
-    if (u.password !== password) {
-      showToast('Incorrect password', 'error');
-      return;
-    }
-    const sess = { username: u.username, role: u.role, nickname: u.nickname };
-    localStorage.setItem('spinout_session', JSON.stringify(sess));
-    setSession(sess);
-    setView('leaderboards');
-    showToast(`Welcome back, ${u.nickname}`, 'success');
-  };
-
-
-  const handleRegister = async (data) => {
-    if (users[data.username] || pending[data.username]) {
-      showToast('Username already taken or pending', 'error');
-      return;
-    }
-
-    const row = {
-      username: data.username,
-      password: data.password,
-      nickname: data.nickname,
-      reason: data.reason || '',
-      submitted_at: Date.now()
-    };
-
-    const { error } = await supabase.from('pending_users').upsert(row);
-    if (error) {
-      console.error('register error', error);
-      showToast('Could not submit application', 'error');
-      return;
-    }
-
-    setPending(prev => ({
-      ...prev,
-      [row.username]: {
-        username: row.username,
-        password: row.password,
-        nickname: row.nickname,
-        reason: row.reason,
-        submittedAt: row.submitted_at
-      }
-    }));
-    setAuthMode('login');
-    showToast('Application submitted — pending admin approval', 'success');
-  };
-
-
+  // ----- VERIFIED AUTH / ACCOUNT MANAGEMENT -----
   const handleLogout = async () => {
-    localStorage.removeItem('spinout_session');
+    await supabase.auth.signOut();
     setSession(null);
     setView('leaderboards');
   };
-
-
-  const handleChangePassword = async (oldPw, newPw) => {
-    const u = users[session.username];
-    if (!u) { showToast('Session error', 'error'); return false; }
-    if (u.password !== oldPw) { showToast('Current password is incorrect', 'error'); return false; }
-    if (!newPw || newPw.length < 4) { showToast('New password must be at least 4 characters', 'error'); return false; }
-
-    const { error } = await supabase.from('profiles').update({ password: newPw }).eq('username', session.username);
-    if (error) {
-      console.error('password update error', error);
-      showToast('Could not update password', 'error');
-      return false;
-    }
-
-    setUsers(prev => ({ ...prev, [session.username]: { ...u, password: newPw } }));
-    showToast('Password updated successfully', 'success');
-    return true;
+  const handleChangePassword = async (oldPw,newPw) => {
+    const {error} = await supabase.rpc('spinout_change_password',{p_old:oldPw,p_new:newPw});
+    if(error){showToast(error.message,'error');return false;}
+    showToast('Password updated','success');return true;
   };
-
-
-  // ----- USER ADMIN -----
-  const approveUser = async (username) => {
-    const p = pending[username];
-    if (!p) return;
-
-    const row = {
-      username: p.username,
-      password: p.password,
-      role: 'member',
-      nickname: p.nickname,
-      joined_at: Date.now(),
-      banned: false
-    };
-
-    const { error: upsertError } = await supabase.from('profiles').upsert(row);
-    const { error: deleteError } = await supabase.from('pending_users').delete().eq('username', username);
-    if (upsertError || deleteError) {
-      console.error('approve user error', { upsertError, deleteError });
-      showToast('Could not approve user', 'error');
-      return;
-    }
-
-    setUsers(prev => ({
-      ...prev,
-      [username]: {
-        username: row.username,
-        password: row.password,
-        role: row.role,
-        nickname: row.nickname,
-        joinedAt: row.joined_at,
-        banned: false
-      }
-    }));
-    setPending(prev => {
-      const next = { ...prev };
-      delete next[username];
-      return next;
-    });
-    showToast(`Approved ${p.nickname}`, 'success');
+  const approveUser = async username => {
+    const {error} = await supabase.rpc('spinout_approve_user',{p_username:username});
+    if(error){showToast(error.message,'error');return;}
+    await refreshData();showToast('Membership approved','success');
   };
-
 
   const rejectUser = async (username) => {
     const { error } = await supabase.from('pending_users').delete().eq('username', username);
@@ -800,12 +699,11 @@ export default function App() {
       <GlobalStyle />
       {toast && <Toast {...toast} />}
       {!session ? (
-        <AuthScreen
-          mode={authMode}
-          setMode={setAuthMode}
-          onLogin={handleLogin}
-          onRegister={handleRegister}
-        />
+        <SecureAuth authUser={authUser} application={application} onLogin={() => setView('leaderboards')}
+          onLogout={handleLogout} onApplied={async () => {
+            const {data:p} = await supabase.from('pending_users').select('username,nickname,submitted_at').eq('auth_user_id',authUser.id).maybeSingle();
+            setApplication(p);
+          }} />
       ) : (
         <>
           <Header session={session} onLogout={handleLogout} view={view} setView={setView}
@@ -1027,105 +925,6 @@ function Footer() {
 }
 
 // ============ AUTH SCREEN ============
-
-function AuthScreen({ mode, setMode, onLogin, onRegister }) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [nickname, setNickname] = useState('');
-  const [reason, setReason] = useState('');
-
-  const submit = (e) => {
-    e?.preventDefault();
-    if (mode === 'login') {
-      if (!username || !password) return;
-      onLogin(username.trim().toLowerCase(), password);
-    } else {
-      if (!username || !password || !nickname) return;
-      onRegister({
-        username: username.trim().toLowerCase(),
-        password,
-        nickname: nickname.trim(),
-        reason: reason.trim()
-      });
-    }
-  };
-
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: `radial-gradient(ellipse at center, ${C.panel2} 0%, ${C.bg} 70%)` }}>
-      <div style={{ width: '100%', maxWidth: 480 }}>
-        <a href="/events" style={{display:'block',marginBottom:28,color:C.accent,fontFamily:mono,fontSize:12,textDecoration:'none'}}>← PUBLIC EVENTS CALENDAR</a>
-        <div style={{ marginBottom: 40, textAlign: 'center' }}>
-          <Logo size="big" />
-          <div style={{ fontFamily: mono, fontSize: 10, color: C.textFaint, letterSpacing: 4, marginTop: 12 }}>
-            DRIVER LEADERBOARD // SOCAL TRACK COMMUNITY
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, marginBottom: 24 }}>
-          <button onClick={() => setMode('login')} style={{
-            flex: 1, padding: 12, background: 'transparent', border: 'none',
-            borderBottom: `2px solid ${mode === 'login' ? C.accent : 'transparent'}`,
-            color: mode === 'login' ? C.accent : C.textDim,
-            fontFamily: mono, fontSize: 11, letterSpacing: 2
-          }}>
-            SIGN IN
-          </button>
-          <button onClick={() => setMode('register')} style={{
-            flex: 1, padding: 12, background: 'transparent', border: 'none',
-            borderBottom: `2px solid ${mode === 'register' ? C.accent : 'transparent'}`,
-            color: mode === 'register' ? C.accent : C.textDim,
-            fontFamily: mono, fontSize: 11, letterSpacing: 2
-          }}>
-            APPLY
-          </button>
-        </div>
-
-        <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 28 }}>
-          <div onKeyDown={(e) => e.key === 'Enter' && submit()}>
-            <Field label="USERNAME">
-              <input value={username} onChange={e => setUsername(e.target.value)}
-                placeholder="lowercase, no spaces"
-                style={inputStyle} />
-            </Field>
-            <Field label="PASSWORD">
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                style={inputStyle} />
-            </Field>
-            {mode === 'register' && (
-              <>
-                <Field label="DISPLAY NAME / NICKNAME">
-                  <input value={nickname} onChange={e => setNickname(e.target.value)}
-                    placeholder="how you'll appear on the leaderboard"
-                    style={inputStyle} />
-                </Field>
-                <Field label="WHY DO YOU WANT IN?">
-                  <textarea value={reason} onChange={e => setReason(e.target.value)}
-                    placeholder="tell admin about your trackday experience (optional)"
-                    rows={3}
-                    style={{ ...inputStyle, resize: 'vertical' }} />
-                </Field>
-              </>
-            )}
-            <button onClick={submit} style={{
-              width: '100%', marginTop: 8, padding: '14px',
-              background: C.accent, color: C.bg, border: 'none',
-              fontFamily: mono, fontSize: 12, letterSpacing: 3, fontWeight: 700
-            }}>
-              {mode === 'login' ? 'AUTHENTICATE →' : 'SUBMIT APPLICATION →'}
-            </button>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 20, padding: 16, border: `1px dashed ${C.border}`, fontFamily: mono, fontSize: 10, color: C.textFaint, lineHeight: 1.7 }}>
-          <div style={{ color: C.textDim, marginBottom: 6, letterSpacing: 1.5 }}>// WELCOME</div>
-          <div>SOUTHERN CALIFORNIA TRACK DRIVERS <span style={{ color: C.accentDim }}>lap times and clean competition</span></div>
-          <div>SIGN IN IF APPROVED <span style={{ color: C.accentDim }}>new lap submissions go through admin review</span></div>
-          <div style={{ marginTop: 6, color: C.textFaint }}>new drivers can apply and wait for admin review.</div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function Field({ label, children, hint }) {
   return (
@@ -2774,13 +2573,13 @@ function ProfileView({ session, laps, pendingLaps, users, allTracks, onChangePas
       )}
 
       {tab === 'settings' && (
-        <SettingsPanel onChangePassword={onChangePassword} />
+        <SettingsPanel onChangePassword={onChangePassword} hasPassword={session.has_password} />
       )}
     </div>
   );
 }
 
-function SettingsPanel({ onChangePassword }) {
+function SettingsPanel({ onChangePassword, hasPassword }) {
   const [oldPw, setOldPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
@@ -2796,8 +2595,8 @@ function SettingsPanel({ onChangePassword }) {
       setError('New passwords do not match');
       return;
     }
-    if (newPw.length < 4) {
-      setError('New password must be at least 4 characters');
+    if (newPw.length < 12) {
+      setError('New password must be at least 12 characters');
       return;
     }
     const ok = await onChangePassword(oldPw, newPw);
@@ -2808,7 +2607,12 @@ function SettingsPanel({ onChangePassword }) {
 
   return (
     <div style={{ maxWidth: 480 }}>
-      <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 24 }}>
+      <div style={{marginBottom:24,padding:24,border:`1px solid ${C.border}`}}>
+        <h3 style={{fontSize:14}}>Sign in with Google</h3>
+        <p style={{fontSize:12,color:C.textDim,lineHeight:1.7}}>Link Google while signed in to keep this membership and all your lap history.</p>
+        <GoogleButton link onError={setError} />
+      </div>
+      {hasPassword && <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 24 }}>
         <div style={{ fontFamily: mono, fontSize: 11, color: C.accent, letterSpacing: 2, marginBottom: 16,
           display: 'flex', alignItems: 'center', gap: 6 }}>
           <Lock size={12} strokeWidth={2.5} /> ▸ CHANGE PASSWORD
@@ -2817,7 +2621,7 @@ function SettingsPanel({ onChangePassword }) {
           <Field label="CURRENT PASSWORD">
             <input type="password" value={oldPw} onChange={e => setOldPw(e.target.value)} style={inputStyle} />
           </Field>
-          <Field label="NEW PASSWORD" hint="at least 4 characters">
+          <Field label="NEW PASSWORD" hint="at least 12 characters">
             <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} style={inputStyle} />
           </Field>
           <Field label="CONFIRM NEW PASSWORD">
@@ -2838,7 +2642,8 @@ function SettingsPanel({ onChangePassword }) {
             UPDATE PASSWORD →
           </button>
         </div>
-      </div>
+      </div>}
+      {!hasPassword && <p style={{color:C.textDim,fontSize:12}}>Use your verified Google account or email sign-in link. No club password is required.</p>}
     </div>
   );
 }
