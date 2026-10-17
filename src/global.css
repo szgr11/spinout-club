@@ -1,1 +1,32 @@
-:root{--font-club:"JetBrains Mono Variable","JetBrains Mono",Menlo,Consolas,monospace;color-scheme:dark;font-family:var(--font-club);font-synthesis:none;font-variant-numeric:tabular-nums}*{box-sizing:border-box}body{margin:0;background:#0a0a0a;color:#e8e8e8;font-family:var(--font-club)}button,input,select,textarea{font-family:inherit}a,button{touch-action:manipulation}button{cursor:pointer}button:disabled{cursor:not-allowed}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #ffd400;outline-offset:3px}::selection{background:#ffd400;color:#0a0a0a}
+:root {
+  --font-club: "JetBrains Mono Variable", "JetBrains Mono", Menlo, Consolas, monospace;
+  --page-base: #111214;
+  --page-glow: radial-gradient(ellipse 80% 75% at 50% 34%, #292a2d 0%, #1c1d20 46%, #111214 100%);
+  --surface-panel: #191a1c;
+  color-scheme: dark;
+  font-family: var(--font-club);
+  font-synthesis: none;
+  font-variant-numeric: tabular-nums;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page-base);
+  color: #e8e8e8;
+  font-family: var(--font-club);
+}
+.club-page {
+  min-height: 100vh;
+  background-color: var(--page-base);
+  background-image: var(--page-glow);
+  background-attachment: fixed;
+}
+button, input, select, textarea { font-family: inherit; }
+a, button { touch-action: manipulation; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid #ffd400;
+  outline-offset: 3px;
+}
+::selection { background: #ffd400; color: #111214; }
