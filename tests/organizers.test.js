@@ -7,7 +7,7 @@ const parse=(id,html)=>parseOrganizer(html,SOURCES.find(s=>s.id===id),'2026-10-1
 
 test('catalog retains all 16 organizers without pretending external-only links are feeds',()=>{
  assert.equal(ORGANIZERS.length,16);assert.equal(new Set(ORGANIZERS.map(o=>o.id)).size,16);
- assert.equal(SOURCES.length,13);assert.ok(!SOURCES.some(s=>s.id==='viptrackdays'||s.id==='fastlane'));
+ assert.equal(SOURCES.length,15);assert.ok(!SOURCES.some(s=>s.id==='viptrackdays'||s.id==='fastlane'));
 });
 test('NASA ordinal dates expand correctly and racing-only cards are excluded',()=>{
  const card=types=>`<div class="event-card"><div class="display-name">#5208: Nov 7th - 8th, 2026</div><div class="at"><p>At Sonoma Raceway</p><p class="info-text">${types}</p></div><div class="register"><a href="/events/5208">Register</a></div></div>`;
@@ -17,6 +17,28 @@ test('NASA ordinal dates expand correctly and racing-only cards are excluded',()
 test('published event dates override reused registration slugs',()=>{
  const html='<div><div class="event-content"><h3 class="event-title"><a href="/event-registration/may-23-2026/register">Buttonwillow Classic Sunday, December 27, 2026</a></h3></div><span class="event-price">$225</span></div>';
  const rows=parse('extremespeed',html);assert.equal(rows[0].date,'2026-12-27');assert.equal(rows[0].prices[0].text,'Listed $225');
+});
+test('regional announcements use the heading year and retain registration-pending status',()=>{
+ const html='<article><h1 class="entry-title">Schedule</h1><div class="entry"><h6>NASA SoCal 2027 Event Schedule</h6><p>February 27/28 – Chuckwalla Valley Raceway<br>April 17/18 – Buttonwillow Raceway CLASSIC<br>September – Championships (Date to be announced)<br>Nov 6/7 – Podium Club</p></div></article>';
+ const rows=parse('nasa-socal-calendar',html);
+ assert.deepEqual(rows.map(e=>e.date),['2027-02-27','2027-02-28','2027-04-17','2027-04-18']);
+ assert.ok(rows.every(e=>e.organizer==='NASA'&&e.scheduleOnly&&/details pending/.test(e.note)));
+ assert.throws(()=>parse('nasa-socal-calendar',html.replace('2027 Event Schedule','Event Schedule')),/Unrecognized/);
+});
+test('NorCal announcements exclude racing-only days and endurance races despite misleading slugs',()=>{
+ const html='<article><h2 class="entry-title"><a rel="bookmark" href="https://nasanorcal.com/2024-2/">NorCal 2027 Calendar</a></h2><div class="entry"><p>All listed events run all race groups and HPDE track days unless otherwise noted.</p><p>May 28-30 Sonoma Raceway</p><p>Nov 6-7 Sonoma Raceway, Saturday racing only! HPDE Intro, 1 and 2 Sunday only</p><p>Dec 11 – 12 Hours of Thunderhill (tentative)</p></div></article>';
+ const rows=parse('nasa-norcal-calendar',html);
+ assert.deepEqual(rows.map(e=>e.date),['2027-05-28','2027-05-29','2027-05-30','2027-11-07']);
+ assert.ok(rows.every(e=>e.kind==='Track day'&&e.url.endsWith('/2024-2/')));
+ assert.match(rows.at(-1).note,/Sunday only/);
+});
+test('regional crossovers merge unambiguous circuits and yield to actual registration',()=>{
+ const base={date:'2027-10-16',track:'Buttonwillow',kind:'Track event',organizer:'NASA',scheduleOnly:true,note:'Details pending',sources:[{id:'nasa-norcal-calendar'}]};
+ const specific={...base,track:'Buttonwillow · Circuit',sources:[{id:'nasa-socal-calendar'}]};
+ const merged=mergeEvents([base,specific],'2026-10-17');assert.equal(merged.length,1);assert.equal(merged[0].track,'Buttonwillow · Circuit');assert.equal(merged[0].sources.length,2);
+ const registered={...specific,scheduleOnly:undefined,note:'',url:'https://members.drivenasa.com/events/123',kind:'Track day',sources:[{id:'nasa'}]};
+ const upgraded=mergeEvents([base,specific,registered],'2026-10-17');assert.equal(upgraded.length,1);assert.equal(upgraded[0].scheduleOnly,undefined);assert.equal(upgraded[0].note,'');assert.equal(upgraded[0].url,registered.url);
+ assert.equal(mergeEvents([base,specific,{...specific,track:'Buttonwillow · Classic'}],'2026-10-17').length,3);
 });
 test('SDC filters out lunch, passes and rentals while retaining sale pricing',()=>{
  const product=(title,price,cls='')=>`<div class="product-list-item ${cls}"><a class="product-list-item-link" href="/event-registration/p/old-2025-slug" aria-label="${title}"></a><div class="product-list-item-price">${price}</div></div>`;

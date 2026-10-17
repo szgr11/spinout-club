@@ -11,12 +11,12 @@ export function calendarDays(start,end=start) {
 export function parseOrganizerDocument(html,source,{makeEvent,parseDateRange,today}) {
  const $=load(html),out=[];let recognized=false;
  const evidence={...source,url:source.feedUrl||source.url};
- const add=({title,start,end,venue,url,html:description='',prices=[],promotions=[],specials=[],kind})=>{
+ const add=({title,start,end,venue,url,html:description='',prices=[],promotions=[],specials=[],kind,note,organizer=source.name,scheduleOnly=false})=>{
   if(excluded.test(title))return;
   try{url=new URL(url,source.feedUrl||source.url).href;}catch{return;}
   const offers=extractOffers(description,{url,sourceId:source.id,today});
   for(const date of calendarDays(start,end||start)){
-   const e=makeEvent({title,date,venue:venue||title,url,source:evidence,organizer:source.name,kind,promotions:[...promotions,...offers.promotions],prices:[...prices,...offers.prices],specials});if(e)out.push(e);
+   const e=makeEvent({title,date,venue:venue||title,url,source:evidence,organizer,kind,note,promotions:[...promotions,...offers.promotions],prices:[...prices,...offers.prices],specials});if(e){if(scheduleOnly)e.scheduleOnly=true;out.push(e);}
   }
  };
  const entry=(text,url)=>({text,sourceUrl:url||evidence.url,sourceId:source.id,checkedAt:new Date().toISOString()});
@@ -26,6 +26,29 @@ export function parseOrganizerDocument(html,source,{makeEvent,parseDateRange,tod
    const raw=clean(card.find('.display-name').text()),year=Number(raw.match(/20\d{2}/)?.[0]);if(!year)return;
    const dates=parseDateRange(raw.replace(/^#\d+:\s*/,''),year),venue=clean(card.find('.at p').first().text().replace(/^At\s+/,''));
    add({title:`${venue} · NASA`,start:dates[0],end:dates.at(-1),venue,url:card.find('.register a').attr('href'),kind:'Track day / time trial'});
+  });
+ }else if(source.adapter==='nasa-calendar'){
+  $('article').each((_,node)=>{
+   const article=$(node),body=article.find('.entry').first();
+   const heading=article.find('.entry-title,h1,h2,h3,h4,h5,h6').toArray().map(e=>clean($(e).text())).find(t=>/20\d{2}.*(?:calendar|event schedule|regional events)/i.test(t));
+   const year=Number(heading?.match(/20\d{2}/)?.[0]);if(!year||!body.length)return;recognized=true;
+   const url=article.find('.entry-title a[rel="bookmark"]').attr('href')||source.url;
+   const hasHPDE=/all listed events.*HPDE track days/i.test(clean(body.text()));
+   body.find('p,li').each((_,p)=>{
+    const block=$(p).clone();block.find('br').replaceWith('\n');
+    for(const line of block.text().split(/\n/).map(clean)){
+     // "Dec 11 – 12 Hours" is not a two-day HPDE. Never invent TBD dates.
+     if(/\b\d+\s*hours?\b|\btentative\b|date to be announced/i.test(line))continue;
+     const m=line.match(/^([A-Za-z]+)\s+(\d{1,2})(?:\s*[/–—-]\s*(\d{1,2}))?\s+(?:[-–—]\s*)?(.+)$/);if(!m)continue;
+     const dates=parseDateRange(`${m[1]} ${m[2]}${m[3]?'-'+m[3]:''}`,year);
+     const restricted=line.match(/HPDE\s+.+$/i)?.[0];
+     for(const date of dates){
+      const weekday=new Date(date+'T12:00:00Z').getUTCDay();
+      if((weekday===6&&/Saturday racing only/i.test(line))||(weekday===0&&/Sunday racing only/i.test(line)))continue;
+      add({title:`${m[4]} · NASA ${source.regionLabel}`,start:date,venue:m[4],url,organizer:'NASA',kind:hasHPDE?'Track day':'Track event',scheduleOnly:true,note:'Announced schedule; registration and session details pending.'+(restricted?' '+restricted:'')});
+     }
+    }
+   });
   });
  }else if(source.adapter==='extremespeed'){
   const titles=$('.event-title');recognized=titles.length>0||/no events setup for registration/i.test($.root().text());

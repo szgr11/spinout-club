@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDateRange,parseSpeedSF,parseSpeedVentures,parseButtonwillow,mergeEvents,refreshEvents,safeURL } from '../worker/events.js';
+import { SOURCES,fetchSource,parseDateRange,parseSpeedSF,parseSpeedVentures,parseButtonwillow,mergeEvents,refreshEvents,safeURL } from '../worker/events.js';
 
 test('ranges expand into local calendar days, including month and year boundaries',()=>{
  assert.deepEqual(parseDateRange('October 24 - 25, 2026',2026),['2026-10-24','2026-10-25']);
@@ -17,6 +17,31 @@ test('organizer adapters retain registration links and expand weekends',()=>{
 test('track feed labels open practice without representing a gate fee as entry price',()=>{
  const result=parseButtonwillow({events:[{title:'Open Test (25ccw)',start_date:'2026-11-01 09:00:00',end_date:'2026-11-01 17:00:00',venue:{venue:'Buttonwillow Raceway Park &#8211; Classic'},organizer:[{organizer:'Buttonwillow Raceway'}],url:'https://buttonwillowraceway.com/event/test/'}]});
  assert.equal(result[0].kind,'Open practice');assert.equal(result[0].track,'Buttonwillow · Classic');assert.equal(result[0].price,undefined);
+});
+test('track updates include the full next calendar year and follow published pagination',async()=>{
+ const original=globalThis.fetch,requested=[];
+ globalThis.fetch=async value=>{
+  const url=new URL(value);requested.push(url);
+  const date=url.searchParams.get('page')==='1'?'2027-01-16':'2027-11-13';
+  return Response.json({total_pages:2,events:[{title:'Speed Ventures',start_date:date+' 09:00:00',end_date:date+' 17:00:00',venue:{venue:'Buttonwillow Classic'},url:'https://buttonwillowraceway.com/event/'+date}]});
+ };
+ try{
+  const rows=await fetchSource(SOURCES.find(s=>s.id==='buttonwillow'),'2026-10-17');
+  assert.deepEqual(rows.map(e=>e.date),['2027-01-16','2027-11-13']);assert.equal(requested.length,2);
+  assert.ok(requested.every(u=>u.searchParams.get('end_date')==='2027-12-31'&&u.searchParams.get('per_page')==='100'));
+ }finally{globalThis.fetch=original;}
+});
+test('SpeedSF checks next-year schedules automatically without accepting a redirected old year',async()=>{
+ const original=globalThis.fetch;let published=true;
+ globalThis.fetch=async url=>{
+  const year=String(url).endsWith('2027')&&published?2027:2026;
+  return new Response(`<title>${year} Events</title><div class="ssf-card"><div class="ssf-card-title">Sonoma Raceway</div><div class="ssf-card-date">Jan 16</div><a class="ssf-reg-btn" href="https://msreg.com/hpde">HPDE</a></div>`);
+ };
+ try{
+  const source=SOURCES.find(s=>s.id==='speedsf');
+  assert.ok((await fetchSource(source,'2026-10-17')).some(e=>e.date==='2027-01-16'));
+  published=false;assert.ok((await fetchSource(source,'2026-10-17')).every(e=>e.date.startsWith('2026')));
+ }finally{globalThis.fetch=original;}
 });
 test('same organizer, track and day merges sources; distinct organizers remain separate',()=>{
  const e={date:'2026-11-01',track:'Buttonwillow · Classic',organizer:'Speed Ventures',kind:'Track day',url:'https://example.com/a',sources:[{id:'speedventures'}]};

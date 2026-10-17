@@ -8,6 +8,8 @@ export const SOURCES = [
   { id: 'speedsf', name: 'SpeedSF', url: 'https://www.speedsf.com/events-registration/' },
   { id: 'buttonwillow', name: 'Buttonwillow Raceway', url: 'https://buttonwillowraceway.com/events/' },
   ...ORGANIZERS.filter(s=>s.adapter&&!['speedventures','speedsf'].includes(s.id)),
+  {id:'nasa-socal-calendar',name:'NASA SoCal schedule',url:'https://nasasocal.com/find-an-event/',adapter:'nasa-calendar',regionLabel:'SoCal'},
+  {id:'nasa-norcal-calendar',name:'NASA NorCal schedule',url:'https://nasanorcal.com/tag/sonoma/',adapter:'nasa-calendar',regionLabel:'NorCal'},
 ];
 const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const clean = (v) => String(v || '').replace(/\s+/g, ' ').trim();
@@ -111,7 +113,18 @@ export function parseButtonwillow(data) {
 const organizerKey = (s) => canonicalOrganizer(s).toLowerCase().replace(/[^a-z0-9]/g,'');
 export function mergeEvents(events, today = todayPacific()) {
   const merged = new Map();
-  for (const e of events.filter(e => e?.date >= today)) {
+  const upcoming=events.filter(e=>e?.date>=today);
+  // A crossover announcement may omit the circuit named by its hosting region.
+  // Resolve it only when exactly one specific configuration agrees.
+  const nasaConfigurations=new Map();
+  for(const e of upcoming)if(organizerKey(e.organizer)==='nasa'&&/^(Buttonwillow|Thunderhill) · /.test(e.track)){
+    const key=e.date+'|'+e.track.split(' · ')[0];
+    if(!nasaConfigurations.has(key))nasaConfigurations.set(key,new Set());
+    nasaConfigurations.get(key).add(e.track);
+  }
+  for (const raw of upcoming) {
+    const matches=raw.scheduleOnly&&organizerKey(raw.organizer)==='nasa'?nasaConfigurations.get(raw.date+'|'+raw.track):null;
+    const e=matches?.size===1?{...raw,track:[...matches][0]}:raw;
     const key = `${e.date}|${e.track}|${organizerKey(e.organizer)}|${e.kind === 'Autocross' ? 'autox' : 'track'}`;
     const previous = merged.get(key);
     if (previous) {
@@ -119,7 +132,9 @@ export function mergeEvents(events, today = todayPacific()) {
       previous.prices=combineOffers(previous.prices,e.prices);
       previous.specials=[...new Set([...(previous.specials||[]),...(e.specials||[])])];
       previous.sources = [...new Map([...previous.sources,...e.sources].map(s=>[s.id,s])).values()];
-      if (previous.sources[0].id === 'buttonwillow' && e.sources[0].id !== 'buttonwillow') { previous.url=e.url; previous.title=e.title; }
+      if (previous.scheduleOnly&&!e.scheduleOnly) { previous.url=e.url;previous.title=e.title;previous.note=e.note;previous.kind=e.kind;delete previous.scheduleOnly; }
+      else if (previous.sources[0].id === 'buttonwillow' && e.sources[0].id !== 'buttonwillow') { previous.url=e.url; previous.title=e.title; }
+      if(previous.scheduleOnly&&previous.kind==='Track event'&&e.kind==='Track day')previous.kind=e.kind;
     } else merged.set(key, { ...e, id: key });
   }
   return [...merged.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.track.localeCompare(b.track));
@@ -148,12 +163,13 @@ export async function fetchSource(source, today = todayPacific()) {
     if(!rows.length)throw new Error('No recognized schedule cards');return rows;
   }
   if (source.id === 'buttonwillow') {
-    const all = []; const end = new Date(`${today}T12:00:00Z`); end.setUTCMonth(end.getUTCMonth()+12);
-    for (let page = 1; page <= 4; page++) {
-      const data = await get(`https://buttonwillowraceway.com/wp-json/tribe/events/v1/events?start_date=${today}&end_date=${end.toISOString().slice(0,10)}&per_page=50&page=${page}`, true);
-      all.push(...parseButtonwillow(data)); if (page >= data.total_pages) break;
+    const all = [],end=`${Number(today.slice(0,4))+1}-12-31`;
+    for (let page = 1; page <= 10; page++) {
+      const data = await get(`https://buttonwillowraceway.com/wp-json/tribe/events/v1/events?start_date=${today}&end_date=${end}&per_page=100&page=${page}`, true);
+      all.push(...parseButtonwillow(data));
+      if(page>=Number(data.total_pages||1)){Object.defineProperty(all,'verifiedEmpty',{value:true});return all;}
     }
-    return all;
+    throw new Error('Track calendar exceeds the bounded page limit');
   }
   if(source.adapter)return parseOrganizer(await get(source.feedUrl||source.url),source,today);
   throw new Error('Unknown source');
