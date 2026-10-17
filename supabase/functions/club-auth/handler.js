@@ -2,6 +2,13 @@ const ALLOWED_ORIGINS = new Set(['https://spinoutclub.cc']);
 const HOSTNAMES = new Set(['spinoutclub.cc']);
 const hash = async value => [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(v=>v.toString(16).padStart(2,'0')).join('');
 export const validChallenge = (v,action) => v?.success === true && v.action === action && HOSTNAMES.has(v.hostname);
+async function readBody(request) {
+ const reader=request.body?.getReader();if(!reader)return '';
+ const chunks=[];let size=0;
+ try { while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>8192){await reader.cancel();throw new RangeError('Request too large');}chunks.push(value);} }
+ finally {reader.releaseLock();}
+ const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return new TextDecoder().decode(bytes);
+}
 
 // The service client is server-only. Every public action proves its own identity.
 export function createHandler({admin,client,fetcher=fetch}) {
@@ -17,9 +24,9 @@ export function createHandler({admin,client,fetcher=fetch}) {
   if(request.method!=='POST')return reply(405,{error:'Method not allowed'});
   try {
    if(Number(request.headers.get('content-length')||0)>8192)return reply(413,{error:'Request too large'});
-   const text=await request.text();if(text.length>8192)return reply(413,{error:'Request too large'});
+   let text;try{text=await readBody(request);}catch(e){if(e instanceof RangeError)return reply(413,{error:'Request too large'});throw e;}
    let body;try{body=JSON.parse(text);}catch{return reply(400,{error:'Invalid request'});}
-   if(!body||!['login','application'].includes(body.action))return reply(400,{error:'Invalid action'});
+   if(!body||!['login','email','application'].includes(body.action))return reply(400,{error:'Invalid action'});
    if(body.website)return reply(400,{error:'Invalid request'});
    let user=null;
    if(body.action==='application'){
@@ -43,6 +50,14 @@ export function createHandler({admin,client,fetcher=fetch}) {
     if(!r.ok)throw new Error('verification unavailable');challenge=await r.json();
    }catch{return reply(403,{error:'Bot verification failed. Please try again.'});}
    if(!validChallenge(challenge,body.action))return reply(403,{error:'Bot verification expired or failed. Please try again.'});
+   if(body.action==='email'){
+    const email=String(body.email||'').trim().toLowerCase();
+    if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.endsWith('@members.spinoutclub.cc'))return reply(400,{error:'Enter a valid email address'});
+    if(!await rate('email:'+await hash(email),3,3600)||!await rate('email-ip:'+ip,5,3600))return reply(429,{error:'Too many email requests. Please try again later.'});
+    const r=await client.auth.signInWithOtp({email,options:{emailRedirectTo:'https://spinoutclub.cc/members'}});
+    if(r.error)return reply(503,{error:'Unable to send a sign-in link. Please try again later.'});
+    return reply(200,{ok:true});
+   }
    if(body.action==='application'){
     if(!await rate('application-user:'+user.id,1,86400)||!await rate('application-ip:'+ip,5,86400))return reply(429,{error:'An application was already submitted. Please wait before trying again.'});
     const args={p_auth_id:user.id,p_username:String(body.username||'').trim().toLowerCase(),p_nickname:String(body.nickname||'').trim(),p_reason:String(body.reason||'').trim()};
@@ -52,7 +67,7 @@ export function createHandler({admin,client,fetcher=fetch}) {
     return reply(200,{ok:true});
    }
    const username=String(body.username||'').trim().toLowerCase(),password=body.password;
-   if(!/^[a-z0-9_]{1,40}$/.test(username)||typeof password!=='string'||!password||password.length>200)return reply(401,{error:'Username or password is incorrect'});
+   if(!/^[a-z0-9_]{1,40}$/.test(username)||typeof password!=='string'||!password||new TextEncoder().encode(password).length>72)return reply(401,{error:'Username or password is incorrect'});
    if(!await rate('login:'+await hash(username),6,900))return reply(429,{error:'Too many attempts. Please wait 15 minutes before trying again.'});
    const {data:profile,error}=await admin.rpc('spinout_verify_legacy',{p_username:username,p_password:password});
    if(error||!profile)return reply(401,{error:'Username or password is incorrect'});

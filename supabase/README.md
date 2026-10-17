@@ -5,8 +5,8 @@
 - Dashboard: https://supabase.com/dashboard/project/wzdqnzfoaaxmnkvxtlpt
 - Region: us-west-2
 
-The app continues to use this existing hosted backend. Client configuration is in `src/supabase.js`; local configuration belongs in an ignored `.env` or `.env.local` file.
+The app retains this hosted backend. Use only the public publishable key in Vite configuration. Server credentials remain in the Edge Function environment and Supabase Vault.
 
-On October 16, 2026, management access confirmed that the project was ACTIVE_HEALTHY. Read-only SQL counted 376 laps and 13 profiles. No database content or permissions were changed.
+`migrations/20261017053044_secure_member_auth.sql` contains the applied authentication/permission cutover. `setup-security.sql` is an identical readable copy; do not run both. The follow-up `20261017055042_isolate_auth_privileges.sql` isolates privileged implementations behind invoker RPCs. Existing member, application and lap records are retained. Credentials are private bcrypt hashes; obsolete public password fields contain only a non-secret marker.
 
-This folder documents the existing backend; it is not a Supabase CLI link or an initialized migration directory. The dashboard GitHub integration has not yet been enabled for the new repository. Before enabling migration deployment, capture and review the existing schema as a baseline. Do not apply the old DEPLOYMENT.md example schema to this live database.
+See `../SECURITY-CUTOVER.md` for provider configuration, production checks and verification limits. No automated Supabase GitHub migration deployment has been enabled; review and baseline the earlier schema before enabling that integration.

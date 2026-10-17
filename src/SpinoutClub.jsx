@@ -301,8 +301,8 @@ export default function App() {
     setView('leaderboards');
   };
   const handleChangePassword = async (oldPw,newPw) => {
-    const {error} = await supabase.rpc('spinout_change_password',{p_old:oldPw,p_new:newPw});
-    if(error){showToast(error.message,'error');return false;}
+    const {data,error} = await supabase.rpc('spinout_change_password',{p_old:oldPw,p_new:newPw});
+    if(error||data?.error){showToast(error?.message||data.error,'error');return false;}
     showToast('Password updated','success');return true;
   };
   const approveUser = async username => {

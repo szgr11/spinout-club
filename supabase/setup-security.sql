@@ -1,4 +1,5 @@
--- Run once against the existing project. Passwords never leave Postgres during conversion.
+-- Run once atomically. Existing records and columns are retained; passwords never leave Postgres.
+-- Credentials are converted in place to private bcrypt hashes, then obsolete public copies are neutralized.
 begin;
 create schema if not exists spinout_private;
 revoke all on schema spinout_private from public, anon, authenticated;
@@ -11,10 +12,32 @@ select username, extensions.crypt(password,extensions.gen_salt('bf',12)) from pu
 union all
 select username, extensions.crypt(password,extensions.gen_salt('bf',12)) from public.pending_users
 on conflict do nothing;
-alter table public.profiles drop column password;
-alter table public.pending_users drop column password;
--- The retired key/value store also contained old plaintext copies.
-update public.app_kv set value = value - 'password' where key like 'user:%';
+-- Verify every copied credential before neutralizing the old password fields.
+do $$ begin
+ if exists(select 1 from public.profiles p left join spinout_private.credentials c using(username)
+   where p.role <> 'system' and (c.password_hash is null or extensions.crypt(p.password,c.password_hash) is distinct from c.password_hash))
+ or exists(select 1 from public.pending_users p left join spinout_private.credentials c using(username)
+   where c.password_hash is null or extensions.crypt(p.password,c.password_hash) is distinct from c.password_hash)
+ then raise exception 'Credential verification failed; migration rolled back'; end if;
+end $$;
+update public.profiles set password='[secured]';
+update public.pending_users set password='[secured]';
+alter table public.profiles alter column password set default '[secured]';
+alter table public.pending_users alter column password set default '[secured]';
+alter table public.profiles add constraint no_plaintext_password check(password='[secured]');
+alter table public.pending_users add constraint no_plaintext_password check(password='[secured]');
+-- Scrub password copies at every depth in the retired store while retaining all other fields.
+create function spinout_private.scrub_passwords(v jsonb) returns jsonb language plpgsql immutable set search_path='' as $$
+declare result jsonb; begin
+ if jsonb_typeof(v)='object' then
+  select coalesce(jsonb_object_agg(key,case when key='password' then '"[secured]"'::jsonb else spinout_private.scrub_passwords(value) end),'{}'::jsonb) into result from jsonb_each(v);
+ elsif jsonb_typeof(v)='array' then
+  select coalesce(jsonb_agg(spinout_private.scrub_passwords(value) order by ordinal),'[]'::jsonb) into result from jsonb_array_elements(v) with ordinality a(value,ordinal);
+ else result:=v; end if;
+ return result;
+end $$;
+revoke all on function spinout_private.scrub_passwords(jsonb) from public,anon,authenticated;
+update public.app_kv set value=spinout_private.scrub_passwords(value) where jsonb_path_exists(value,'$.**.password');
 alter table public.profiles add column auth_user_id uuid unique references auth.users(id);
 alter table public.pending_users add column auth_user_id uuid unique references auth.users(id);
 create table spinout_private.rate_limits (key text primary key, window_start timestamptz not null, attempts integer not null);
@@ -59,6 +82,9 @@ create policy submit_pending_lap on public.pending_laps for insert to authentica
 create policy own_reports on public.reports for select to authenticated using (reporter=(select spinout_private.member_name()));
 create policy submit_report on public.reports for insert to authenticated with check (reporter=(select spinout_private.member_name()) and length(reason) between 1 and 2000);
 create unique index reports_once_per_member on public.reports(lap_id,reporter);
+create index pending_laps_submitter on public.pending_laps(submitted_by);
+create index reports_reporter on public.reports(reporter);
+create index laps_track_date on public.laps(track,date);
 
 create function public.spinout_account() returns jsonb language sql stable security definer set search_path='' as $$
  select jsonb_build_object('username',p.username,'nickname',p.nickname,'role',p.role,'banned',p.banned,'has_password',exists(select 1 from spinout_private.credentials c where c.username=p.username)) from public.profiles p where p.auth_user_id=(select auth.uid())
@@ -79,7 +105,7 @@ create function public.spinout_verify_legacy(p_username text,p_password text) re
 declare h text; p public.profiles; begin
  select * into p from public.profiles where username=p_username and role in ('admin','member') and not coalesce(banned,false);
  select password_hash into h from spinout_private.credentials where username=p_username;
- if h is null or p.username is null or length(p_password)>200 then return null; end if;
+ if p_password is null or octet_length(p_password)>72 or h is null or p.username is null then return null; end if;
  if extensions.crypt(p_password,h)<>h then return null; end if;
  return jsonb_build_object('username',p.username,'auth_user_id',p.auth_user_id);
 end $$;
@@ -115,15 +141,16 @@ end $$;
 revoke all on function public.spinout_approve_user(text) from public,anon;
 grant execute on function public.spinout_approve_user(text) to authenticated;
 
-create function public.spinout_change_password(p_old text,p_new text) returns void language plpgsql security definer set search_path='' as $$
+create function public.spinout_change_password(p_old text,p_new text) returns jsonb language plpgsql security definer set search_path='' as $$
 declare u text; h text; begin
  u:=spinout_private.member_name();
- if u is null then raise exception 'Approved member required'; end if;
- if not public.spinout_rate_limit('password:'||auth.uid()::text,5,900) then raise exception 'Please wait before trying again'; end if;
+ if u is null then return jsonb_build_object('error','Approved member required'); end if;
+ if not public.spinout_rate_limit('password:'||auth.uid()::text,5,900) then return jsonb_build_object('error','Please wait before trying again'); end if;
  select password_hash into h from spinout_private.credentials where username=u;
- if h is null or extensions.crypt(p_old,h)<>h then raise exception 'Current password is incorrect'; end if;
- if length(p_new)<12 or octet_length(p_new)>72 then raise exception 'Use 12 or more characters, up to 72 bytes'; end if;
+ if p_old is null or octet_length(p_old)>72 or h is null or extensions.crypt(p_old,h)<>h then return jsonb_build_object('error','Current password is incorrect'); end if;
+ if p_new is null or length(p_new)<12 or octet_length(p_new)>72 then return jsonb_build_object('error','Use 12 or more characters, up to 72 bytes'); end if;
  update spinout_private.credentials set password_hash=extensions.crypt(p_new,extensions.gen_salt('bf',12)),updated_at=now() where username=u;
+ return jsonb_build_object('ok',true);
 end $$;
 revoke all on function public.spinout_change_password(text,text) from public,anon;
 grant execute on function public.spinout_change_password(text,text) to authenticated;
