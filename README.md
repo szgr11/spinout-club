@@ -47,6 +47,6 @@ The recovered component uses custom username/password fields and a local session
 
 ## Hosting
 
-Cloudflare API inspection confirms the live site uses the existing static-assets Worker `raspy-water-4eb5`. The older notes described Pages, but the repository now targets the verified Worker using `wrangler.jsonc`. See `CLOUDFLARE.md` for native Workers Builds setup and the optional manual GitHub Actions workflow. Source preparation has not deployed a replacement or changed Supabase data.
+The live site uses the existing static-assets Worker `raspy-water-4eb5`, targeted by `wrangler.jsonc`. Cloudflare Workers Builds is connected to this repository and automatically builds and deploys pushes to `main`. The first deployment succeeded on October 16, 2026 (Pacific time), using the existing Supabase project and `spinoutclub.cc` domain. No Supabase schema or data changes were made. See `CLOUDFLARE.md` for the verified configuration and the optional manual GitHub Actions workflow.
 
 The existing project reference and verification notes are in `supabase/README.md`. The client also accepts `VITE_SUPABASE_ANON_KEY` for compatibility with older hosting settings.

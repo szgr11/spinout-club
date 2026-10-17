@@ -14,28 +14,29 @@ Cloudflare API inspection on October 16, 2026 confirmed that the domain is attac
 | Compatibility date | `2026-05-13`, matching the existing deployment |
 | Production branch | `main` |
 | Build command | `npm run build` |
-| Deploy command | `npm run deploy -- --keep-vars` |
+| Deploy command | `npx wrangler deploy` |
 | Static asset directory | `dist/` |
 
 `wrangler.jsonc` targets the existing Worker. The domain assignment is managed in Cloudflare.
 
 ## Native Workers Builds
 
-Authorize the Cloudflare Workers and Pages GitHub App for **only** `szgr11/spinout-club`:
+The Cloudflare Workers and Pages GitHub App is connected to `szgr11/spinout-club`:
 
 https://github.com/apps/cloudflare-workers-and-pages
 
-Then connect the repository to the existing Worker using Workers Builds, with the commands above, root directory `/`, and production branch `main`.
+Workers Builds is enabled for the existing Worker, with the commands above, root directory `/`, and production branch `main`. Pushes to `main` automatically build and deploy. Preview builds are also enabled.
 
-Set these **build variables** in Cloudflare:
+These **build variables** are configured for production and preview builds in Cloudflare:
 
 - `VITE_SUPABASE_URL=https://wzdqnzfoaaxmnkvxtlpt.supabase.co`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`: the existing project's public publishable key.
-- `NODE_VERSION=24`
+
+The first verified Cloudflare build used Node.js 24.21.0.
 
 The Supabase variables must be available while Vite builds, rather than only at Worker request time. Never use a Supabase server secret in this frontend.
 
-Cloudflare MCP account access is verified. The repository-link attempt returned a disconnected-Git-account error. GitHub App authorization and the native build trigger are pending. No deployment has been started by this source preparation.
+Cloudflare account access and GitHub authorization are verified. The first build and deployment succeeded on October 16, 2026 (Pacific time), from commit `931e4c240b3ce00f0f7b9da93dba853340ec944e`; build ID `3a53079c-0090-4113-9bbc-7437f35498eb`. The existing Supabase project and custom domain are retained. No database migration was applied.
 
 ## Manual GitHub Actions alternative
 
