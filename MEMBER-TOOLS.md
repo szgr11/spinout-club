@@ -1,0 +1,31 @@
+# Track-day plans, garage and lightweight service checks
+
+## Member experience
+
+The public calendar remains available without an account. `Plan / who’s going` loads the optional member panel for a selected event. Approved members can save a day, mark interest or mark themselves going. Saved/Interested plans are private. Going stays private until the member checks **Show my username publicly as going**. Switching status or removing a plan removes shared attendance. Public attendance includes approved, non-banned members only, and expires from public display after the event date. No email address or account ID is exposed.
+
+`My track days` lists saved plans, with an option to include past plans. Google Calendar links and all-day `.ics` exports are available from the event panel and saved plans. Exports preserve calendar dates, escape/fold text and use an exclusive next-day end date. Saving a plan does not book an event. Dates missing from the current calendar are flagged for organizer confirmation.
+
+`Profile → My Garage` saves reusable vehicle, wheel horsepower and tire defaults. The same picker is directly on the lap reporting page. All existing fields remain editable. Choosing a garage entry fills only vehicle, horsepower and tires; it does not change driver, time, circuit, date, proof or lap type. Editing the lap does not automatically save defaults. **Update garage defaults** explicitly saves the current form specs; **Save as another vehicle** creates a separate entry. Existing lap records retain their own snapshots. Removing a garage entry never deletes laps. The existing PB grouping and moderation flow are unchanged; garage names do not automatically merge old free-text vehicle variants.
+
+## Isolation and permissions
+
+The additive migration `20261019182803_member_event_plans_and_garage.sql` creates separate `event_plans` and `member_garage` tables. It does not alter the lap tables, existing auth functions or existing RLS policies. Apply it before publishing the new frontend. Owners can manage only their own entries. RLS, column grants and an invoker view limit public access to shared attendance. Quotas bound each member to 256 plans and 30 garage entries. Admin service totals use an admin-checked private implementation behind an invoker RPC.
+
+Member modules load on demand behind local error boundaries. Calendar browsing starts no Supabase requests. Garage failure leaves manual lap reporting available. New data reads are not added to the app’s existing all-or-nothing member refresh. There is no new periodic polling or external analytics dependency. Browser sessions continue through the existing Supabase Auth client.
+
+## Calendar quality and service health
+
+Generic membership/merchandise advertisements and bare coupon inputs are excluded from offer badges. Calendar-invalid deadlines such as September 31 are rejected. Known expired absolute, year-inferred and supported relative deadlines are filtered, including retained cached offers. Capacity limits and checkout availability remain unverified; source conditions and stale evidence are still shown.
+
+`Date announced` identifies calendar-only dates, while `Registration link` identifies organizer listings. These labels do not assert that registration is open or that places remain.
+
+`GET /api/health` reads only the existing KV snapshot. Refresh age over 150 minutes, delayed sources and count drops are flagged. A source with a baseline of at least five event days that falls below half its baseline gets a review flag until recovery. Checks never reject a refresh or suppress valid empty schedules. The existing hourly cron and bounded detail-page rotation are preserved.
+
+`Race Control → Service Health` loads calendar checks and aggregate club/plan/garage/lap totals only when opened. Worker logs retain one summary per refresh and anonymous `registration_click` events. Click logging is a best-effort keepalive request and cannot block navigation; Do Not Track is respected. The endpoint accepts only a fixed same-origin event under 40 bytes. It records no username, destination, cookie, visitor ID or request body. Invocation logs are disabled and URL query strings are redacted. Click totals are available through Cloudflare’s structured logs; they are sampled operational observations, not unique visitors or guaranteed registrations. No notification destination has been configured.
+
+## Validation and rollback
+
+Regression coverage includes ownership, forged writes, banned membership, private plans, reversible public sharing, garage limits, admin-only totals, calendar export dates/text, cached-offer cleanup and snapshot-only health checks. React DOM checks exercise lazy calendar loading, attendee usernames, Going privacy defaults, reversal of sharing, garage autofill, inline spec editing and unchanged submitted-lap snapshots after later garage updates.
+
+Rollback the Worker/frontend to the prior version if needed. The optional tables can remain in place; the prior app does not read them. No existing lap data needs to be restored. Production smoke checks must verify the public calendar/boards, the anonymous attendance view and denial of private plan/garage fields. Real Google/legacy sign-in and user-owned plan/garage writes should also be checked by an approved member.

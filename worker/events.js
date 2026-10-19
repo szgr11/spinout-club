@@ -3,6 +3,7 @@ import {extractOffers,activeOffers,publishedOffers,combineOffers} from './offers
 import {ORGANIZERS,canonicalOrganizer} from '../src/event-catalog.js';
 import {parseOrganizerDocument} from './organizers.js';
 import {TRACK_SOURCES,parseTrackCalendar} from './track-calendars.js';
+import {sourceCountHealth,calendarHealth} from './health.js';
 
 export const SOURCES = [
   { id: 'speedventures', name: 'Speed Ventures', url: 'https://www.speedventures.com/events/Default.aspx' },
@@ -210,7 +211,7 @@ export async function enrichEvents(events,previous={},today=todayPacific()) {
  // Bound requests and concurrency. Unchecked URLs rotate ahead of recently checked URLs.
  for(let i=0;i<due.length;i+=4)await Promise.all(due.slice(i,i+4).map(async url=>{
   const sourceId=events.find(e=>e.url===url)?.sources?.[0]?.id;
-  try{const html=await detailHTML(url);const offers=extractOffers(html,{url,sourceId,today,checkedAt:now});if(sourceId==='turn8')offers.prices=offers.prices.filter(p=>/HPDE|registration|entry|track.?day/i.test(p.text));cache[url]={...offers,checkedAt:now,status:'ok'};}
+  try{const html=await detailHTML(url);const offers=extractOffers(html,{url,sourceId,today,eventDate:events.find(e=>e.url===url)?.date,checkedAt:now});if(sourceId==='turn8')offers.prices=offers.prices.filter(p=>/HPDE|registration|entry|track.?day/i.test(p.text));cache[url]={...offers,checkedAt:now,status:'ok'};}
   catch{cache[url]={...(cache[url]||{}),checkedAt:now,status:'stale'};}
  }));
  const enriched=events.map(e=>{
@@ -229,7 +230,7 @@ export async function refreshEvents(kv) {
  results.forEach((result,i)=>{
   const source=SOURCES[i],old=previous?.sources?.find(s=>s.id===source.id);
   if(result.status==='fulfilled'&&(result.value.length||result.value.verifiedEmpty)){
-   sourceSnapshots[source.id]=result.value;events.push(...result.value);sources.push({...source,status:'ok',lastSuccess:new Date().toISOString(),count:result.value.length});
+   sourceSnapshots[source.id]=result.value;events.push(...result.value);sources.push({...source,status:'ok',lastSuccess:new Date().toISOString(),count:result.value.length,...sourceCountHealth(result.value.length,old)});
   }else{
    const prior=previous?.sourceSnapshots?.[source.id]||(previous?.events||[]).filter(e=>e.sources.some(s=>s.id===source.id)).map(e=>({...e,sources:e.sources.filter(s=>s.id===source.id),promotions:(e.promotions||[]).filter(x=>x.sourceId===source.id),prices:(e.prices||[]).filter(x=>x.sourceId===source.id)}));
    sourceSnapshots[source.id]=prior;
@@ -239,5 +240,7 @@ export async function refreshEvents(kv) {
  });
  const enriched=await enrichEvents(mergeEvents(events,today),previous?.detailCache,today);
  const calendar={updatedAt:new Date().toISOString(),...enriched,sources,sourceSnapshots,refreshHours:1};
- await kv.put('calendar',JSON.stringify(calendar));return calendar;
+ await kv.put('calendar',JSON.stringify(calendar));
+ const health=calendarHealth(calendar);console.info(JSON.stringify({event:'calendar_refresh',status:health.status,eventDays:health.eventDays,issues:health.issues}));
+ return calendar;
 }

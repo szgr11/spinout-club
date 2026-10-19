@@ -10,6 +10,11 @@
       "id": "df8826bff2b941ab86dffca41465158e"
     }
   ],
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": {"enabled": true, "invocation_logs": false}
+  },
   "triggers": {
     "crons": [
       "0 * * * *"
