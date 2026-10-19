@@ -30,6 +30,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
   await db.exec(await readFile(new URL('../supabase/setup-security.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261017055042_isolate_auth_privileges.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261017060105_public_leaderboard_views.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261019182803_member_event_plans_and_garage.sql',import.meta.url),'utf8'));
   const scalar=async q=>(await db.query(q)).rows[0];
   const as=async(role,uid='')=>db.exec("reset role;set role "+role+";set request.jwt.claim.sub='"+uid+"';");
   await db.exec("update profiles set auth_user_id='"+ADMIN+"' where username='admin';update profiles set auth_user_id='"+MEMBER+"' where username='member';update profiles set auth_user_id='"+BANNED+"' where username='banned';");
@@ -93,6 +94,40 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
    await as('authenticated',MEMBER);
    for(let n=0;n<3;n++)await db.query("select spinout_change_password('wrong','longer-dummy-new-password')");
    assert.match((await scalar("select spinout_change_password('wrong','longer-dummy-new-password') as result")).result.error,/Please wait/);
+  });
+  await t.test('garage defaults belong to approved owners and do not update lap snapshots',async()=>{
+   await as('authenticated',MEMBER);
+   const car=(await db.query("insert into member_garage(car,hp,tire) values('Track GR86',200,'RT660') returning id")).rows[0];
+   await db.query("update member_garage set hp=230,tire='RE71RS' where id=$1",[car.id]);
+   assert.equal((await scalar('select hp from member_garage')).hp,230);
+   assert.equal((await scalar("select hp from laps where id='lap1'")).hp,null);
+   await assert.rejects(db.query("insert into member_garage(username,car) values('admin','Forged')"),/Approved owner|row-level security/);
+   await as('authenticated',ADMIN);assert.equal((await scalar('select count(*) n from member_garage')).n,0);
+   await as('authenticated',BANNED);await assert.rejects(db.query("insert into member_garage(car) values('Banned car')"),/Approved owner|row-level security|not-null/);
+   await as('anon');await assert.rejects(db.query('select * from member_garage'),/permission denied/);
+  });
+  await t.test('attendance sharing is explicit, reversible, and reveals no private plan details',async()=>{
+   await as('authenticated',MEMBER);
+   const plan="('day-key-0001','2099-11-21','Buttonwillow day','Buttonwillow Circuit','Organizer','https://example.com/event','going',false)";
+   await db.query('insert into event_plans(event_key,date,title,track,organizer,url,state,share_attendance) values '+plan);
+   await as('anon');assert.equal((await scalar('select count(*) n from event_attendees')).n,0);
+   await assert.rejects(db.query('select url from event_plans'),/permission denied/);
+   await as('authenticated',MEMBER);await db.query("update event_plans set share_attendance=true where event_key='day-key-0001'");
+   await as('anon');assert.deepEqual((await db.query('select * from event_attendees')).rows,[{event_key:'day-key-0001',username:'member'}]);
+   await as('authenticated',ADMIN);assert.equal((await db.query("update event_plans set title='Changed' where event_key='day-key-0001' returning event_key")).rows.length,0);
+   await as('authenticated',MEMBER);await db.query("update event_plans set share_attendance=false where event_key='day-key-0001'");
+   await as('anon');assert.equal((await scalar('select count(*) n from event_attendees')).n,0);
+   await assert.rejects(db.query("insert into event_plans(event_key) values('forged-key')"),/permission denied/);
+   await as('authenticated',MEMBER);await db.query("update event_plans set share_attendance=true where event_key='day-key-0001'");
+   await as('postgres');await db.query("update profiles set banned=true where username='member'");
+   await as('anon');assert.equal((await scalar('select count(*) n from event_attendees')).n,0);
+   await as('postgres');await db.query("update profiles set banned=false where username='member'");
+  });
+  await t.test('service counts are admin-only and garage quotas are enforced',async()=>{
+   await as('authenticated',MEMBER);await assert.rejects(db.query('select spinout_service_counts()'),/Admin required/);
+   await assert.rejects(db.query("insert into member_garage(car) select 'Garage '||n from generate_series(1,30) n"),/Garage limit/);
+   await as('authenticated',ADMIN);assert.equal((await scalar("select spinout_service_counts()->>'garage_vehicles' n")).n,'1');
+   await as('anon');await assert.rejects(db.query('select spinout_service_counts()'),/permission denied/);
   });
  }finally{await db.close();}
 });

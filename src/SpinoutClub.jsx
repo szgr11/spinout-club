@@ -2,7 +2,11 @@ import { supabase, publicSupabase } from './supabase'
 import { CLUB_FONT } from './typography.js';
 import { deduplicateLaps, personalBests as selectPersonalBests, personalBestKey, memberLapHistory, normalizeLapLabel, readLapPages } from './laps.js';
 import { SecureAuth, GoogleButton } from './SecureAuth.jsx';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useMemo } from 'react';
+import OptionalFeature from './OptionalFeature.jsx';
+import {applyGarageSpecs} from './event-tools.js';
+const Garage=lazy(()=>import('./Garage.jsx'));
+const ServiceStatus=lazy(()=>import('./ServiceStatus.jsx'));
 import { Trophy, Clock, User, LogOut, Plus, Check, X, Shield, Flag, Thermometer, Calendar, Zap, ChevronRight, AlertCircle, Edit2, Ban, MapPin, Megaphone, Lock, Settings, Pin } from 'lucide-react';
 
 // ============ BUILT-IN TRACK DEFINITIONS ============
@@ -1358,7 +1362,7 @@ function Stat({ label, value, accent }) {
 
 // ============ SUBMIT VIEW ============
 
-function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
+export function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
   const [form, setForm] = useState({
     track: initialTrack,
     driver: session.nickname,
@@ -1430,7 +1434,7 @@ function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div className="lap-submit-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 24 }}>
           <div style={{ fontFamily: mono, fontSize: 11, color: C.accent, letterSpacing: 2, marginBottom: 16 }}>
             ▸ CIRCUIT & TIME
@@ -1484,6 +1488,7 @@ function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
           <Field label="DRIVER NICKNAME">
             <input value={form.driver} onChange={e => setF('driver', e.target.value)} style={inputStyle} />
           </Field>
+          <OptionalFeature><Suspense fallback={<p role="status">Loading garage…</p>}><Garage key={session.username} username={session.username} form={form} onApply={car=>setForm(current=>applyGarageSpecs(current,car))}/></Suspense></OptionalFeature>
           <Field label="VEHICLE (YEAR + MODEL)" hint="e.g. 2022 Corvette C8">
             <input value={form.car} onChange={e => setF('car', e.target.value)}
               placeholder="2023 GR86" style={inputStyle} />
@@ -1586,6 +1591,7 @@ function AdminView({
     { id: 'laps', label: `ALL LAPS`, count: laps.length },
     { id: 'tracks', label: `TRACKS`, count: allTracks.length },
     { id: 'billboards', label: `BILLBOARDS`, count: billboards.length },
+    { id: 'health', label: 'SERVICE HEALTH', count: '↗' },
   ];
 
   return (
@@ -1618,6 +1624,7 @@ function AdminView({
         ))}
       </div>
 
+      {section==='health'&&<OptionalFeature><Suspense fallback={<p role="status">Loading service health…</p>}><ServiceStatus/></Suspense></OptionalFeature>}
       {section === 'pending_laps' && (
         <PendingLapsPanel
           pendingLaps={pendingLaps}
@@ -2472,6 +2479,7 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
           { id: 'bests', label: 'PERSONAL BESTS' },
           { id: 'history', label: `LAP HISTORY (${myLaps.length})` },
           { id: 'pending', label: `MY PENDING (${myPending.length})` },
+          { id: 'garage', label: 'MY GARAGE' },
           { id: 'settings', label: 'SETTINGS' }
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -2485,6 +2493,7 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
         ))}
       </div>
 
+      {tab==='garage'&&<OptionalFeature><Suspense fallback={<p role="status">Loading garage…</p>}><Garage key={session.username} username={session.username}/></Suspense></OptionalFeature>}
       {tab==='bests'&&<div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',marginBottom:16,fontFamily:mono,fontSize:11}}><span style={{color:C.textDim}}>PB per driver, vehicle &amp; circuit</span><label>Lap type <select aria-label="Personal best lap type" value={bestType} onChange={e=>setBestType(e.target.value)} style={{...inputStyle,width:'auto',marginLeft:8}}><option value="all">All</option><option value="real">Real</option><option value="optimal">Optimal</option></select></label></div>}
 
       {tab === 'bests' && (
