@@ -127,7 +127,8 @@ export function mergeEvents(events, today = todayPacific()) {
   }
   for (const raw of upcoming) {
     const matches=raw.scheduleOnly?nasaConfigurations.get(organizerKey(raw.organizer)+'|'+raw.date+'|'+raw.track):null;
-    const e=matches?.size===1?{...raw,track:[...matches][0]}:raw;
+    // Normalize retained snapshots too, so old source labels cannot split filters.
+    const e={...raw,organizer:canonicalOrganizer(raw.organizer),...(matches?.size===1?{track:[...matches][0]}:{})};
     const key = `${e.date}|${e.track}|${organizerKey(e.organizer)}|${e.kind === 'Autocross' ? 'autox' : 'track'}`;
     const previous = merged.get(key);
     if (previous) {

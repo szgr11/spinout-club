@@ -28,6 +28,8 @@ export const CALENDAR_TRACKS = [
 ];
 export function canonicalOrganizer(value) {
   const key=String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  // Buttonwillow's Canyon Run Racing listing links to canyonrunsundays.com.
+  if (['canyonrun','canyonrunracing','canyonrunsunday','canyonrunsundays'].includes(key)) return 'Canyon Run Sundays';
   const aliases={speedventuresoperationsllc:'Speed Ventures',speedventure:'Speed Ventures',speedventures:'Speed Ventures',speedsfcom:'SpeedSF',speedsf:'SpeedSF',extremespeedtrackevents:'Extreme Speed',extremespeed:'Extreme Speed',ongridtrack:'OnGrid',ongrid:'OnGrid',sdc:'SoCal Drivers Club',southerncaldriversclub:'SoCal Drivers Club',socaldriverclub:'SoCal Drivers Club',socaldriversclub:'SoCal Drivers Club',westcoastracinginc:'West Coast Racing',westcoastracing:'West Coast Racing',hookedondrivingcalifornia:'Hooked on Driving',hookedondriving:'Hooked on Driving',turn8trackdays:'Turn8',turn8racing:'Turn8',turn8:'Turn8',trackedllc:'TRACKED.llc'};
   return aliases[key]||String(value||'').trim();
 }
