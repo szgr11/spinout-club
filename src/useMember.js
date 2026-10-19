@@ -14,6 +14,6 @@ export default function useMember() {
   if(!user){setLoading(false);return;}
   supabase.rpc('spinout_account').then(({data,error})=>{if(!active)return;if(error)setError('Member tools are temporarily unavailable.');else if(data&&!data.banned&&['member','admin'].includes(data.role)){setAccount(data);setError('');}setLoading(false);}).catch(()=>{if(active){setError('Member tools are temporarily unavailable.');setLoading(false);}});
   return()=>{active=false;};
- },[user?.id]);
+ },[user?.id,user===undefined]);
  return {account,error,loading};
 }
