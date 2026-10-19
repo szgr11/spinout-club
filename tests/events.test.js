@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SOURCES,fetchSource,parseDateRange,parseSpeedSF,parseSpeedVentures,parseButtonwillow,mergeEvents,refreshEvents,safeURL } from '../worker/events.js';
+import worker from '../worker/index.js';
 
 test('ranges expand into local calendar days, including month and year boundaries',()=>{
  assert.deepEqual(parseDateRange('October 24 - 25, 2026',2026),['2026-10-24','2026-10-25']);
@@ -48,6 +49,28 @@ test('same organizer, track and day merges sources; distinct organizers remain s
  const data=mergeEvents([e,{...e,url:'https://example.com/b',sources:[{id:'buttonwillow'}]},{...e,organizer:'PCA'}],'2026-10-01');
  assert.equal(data.length,2);assert.equal(data[0].sources.length,2);assert.equal(data[0].url,e.url);
  assert.equal(mergeEvents([e],'2027-01-01').length,0);
+});
+test('Canyon Run aliases share a canonical organizer while distinct days and layouts remain',()=>{
+ const old=parseButtonwillow({events:[{title:'Canyon Run',start_date:'2026-11-21 08:00:00',end_date:'2026-11-21 17:00:00',venue:{venue:'Buttonwillow Circuit'},organizer:[{organizer:'Canyon Run Racing'}],url:'https://buttonwillowraceway.com/event/canyon-run/'}]})[0];
+ assert.equal(old.organizer,'Canyon Run Sundays');
+ const venue={...old,organizer:'Canyon Run Racing'};
+ const registration={...old,organizer:'Canyon Run Sundays',sources:[{id:'canyonrunsundays'}],url:'https://www.canyonrunsundays.com/events/buttonwillow-the-circuit'};
+ for(const rows of [[venue,registration],[registration,venue]]){
+  const merged=mergeEvents([...rows,{...venue,date:'2026-11-22'},{...venue,track:'Buttonwillow · Classic'},{...venue,kind:'Autocross'}],'2026-10-19');
+  assert.equal(merged.length,4);assert.ok(merged.every(e=>e.organizer==='Canyon Run Sundays'));
+  const event=merged.find(e=>e.date==='2026-11-21'&&e.track===old.track&&e.kind!=='Autocross');
+  assert.equal(event.sources.length,2);assert.equal(event.url,registration.url);
+ }
+ assert.equal(venue.organizer,'Canyon Run Racing');
+});
+test('public API immediately canonicalizes and merges cached organizer aliases without scraping',async()=>{
+ const event={date:'2099-11-21',track:'Buttonwillow · Circuit',organizer:'Canyon Run Racing',kind:'Track day',sources:[{id:'buttonwillow'}],url:'https://buttonwillowraceway.com/event/canyon-run/'};
+ const calendar={updatedAt:'2026-10-19T17:02:00Z',sources:[{id:'buttonwillow',status:'ok'}],events:[event,{...event,organizer:'Canyon Run Sunday',sources:[{id:'chuckwalla-calendar'}]}]};
+ const response=await worker.fetch(new Request('https://spinoutclub.cc/api/events'),{EVENTS:{get:async()=>calendar}},{});
+ assert.equal(response.status,200);const result=await response.json();
+ assert.equal(result.events.length,1);assert.equal(result.events[0].organizer,'Canyon Run Sundays');assert.equal(result.events[0].sources.length,2);
+ assert.equal(result.updatedAt,calendar.updatedAt);assert.deepEqual(result.sources,calendar.sources);
+ assert.equal(calendar.events[0].organizer,'Canyon Run Racing');
 });
 test('unsafe registration URLs are rejected',()=>{assert.equal(safeURL('javascript:alert(1)'),null);assert.equal(safeURL('data:text/html,no'),null);});
 test('abbreviated motorcycle/kart listings are excluded using organizer metadata',()=>{
