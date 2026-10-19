@@ -2,6 +2,8 @@
 
 React + Vite source for the Spinout Club track community and Spinner boards. Supabase remains the shared backend.
 
+Spinout is a California track-day companion: plan with other drivers, maintain vehicle setups, and follow personal progress. Event registration stays with organizers and platforms such as MotorsportReg. Prioritize lightweight community tools that make participation more useful.
+
 ## Public pages and member tools
 
 - `/` and `/events`: public track-day calendar, source links, published offers and special events.
