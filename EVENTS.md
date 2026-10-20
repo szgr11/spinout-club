@@ -63,3 +63,14 @@ Docs: https://api.motorsportreg.com/ and https://assets.motorsportreg.com/gec/do
 Run `node --test tests/*.test.js`, `npm run build`, and `npm run deploy:check`. Live-source smoke checks must confirm that adapters produce future dates and registration links. Unit tests cover date ranges, duplicate sources, separate organizers, open-testing labels, safe URLs and retained dates after source failures.
 
 The legacy lap duplication fix only collapses identical imported records for display and totals. Raw database rows remain recoverable; no lap records were deleted.
+
+
+## Calendar presentation
+
+The feed serves upcoming track days, so the current month starts at the current Pacific-time week by default. “Show full month” restores elapsed weeks; other months always show their complete month with only the required Sunday–Saturday rows. Past dates are marked as past rather than presented as evidence that no events took place.
+
+Today has a yellow date badge, a cell outline and a visible TODAY label. The Today button returns to the current month and scrolls to that cell. The date marker refreshes every minute and when the page becomes visible.
+
+Selecting a date or a +more button opens the day's event details in a native modal tray. It retains registration links, published offers and optional planning tools. Escape, the close button or a backdrop click closes it and restores focus to the trigger. Month transitions and the tray entrance honor reduced-motion preferences. Calendar navigation and page headings share the same components as the other pages.
+
+The month list remains mounted when a date is selected. The day tray is a separate, persistent dialog, opened in a layout effect before paint, with a transform-only slide and no opacity animation. Focus moves without scrolling; closing returns focus to the day trigger. The dialog and controls use square corners.

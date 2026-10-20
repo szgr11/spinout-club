@@ -31,6 +31,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
   await db.exec(await readFile(new URL('../supabase/migrations/20261017055042_isolate_auth_privileges.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261017060105_public_leaderboard_views.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261019182803_member_event_plans_and_garage.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261020063347_moderator_permissions.sql',import.meta.url),'utf8'));
   const scalar=async q=>(await db.query(q)).rows[0];
   const as=async(role,uid='')=>db.exec("reset role;set role "+role+";set request.jwt.claim.sub='"+uid+"';");
   await db.exec("update profiles set auth_user_id='"+ADMIN+"' where username='admin';update profiles set auth_user_id='"+MEMBER+"' where username='member';update profiles set auth_user_id='"+BANNED+"' where username='banned';");
@@ -43,7 +44,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
    assert.equal((await scalar("select spinout_verify_legacy('member','wrong') as account")).account,null);
   });
   await t.test('authenticated public RPCs do not execute with owner privileges',async()=>{
-   assert.equal((await scalar("select count(*) n from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('spinout_account','spinout_change_password','spinout_approve_user') and p.prosecdef")).n,0);
+   assert.equal((await scalar("select count(*) n from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('spinout_account','spinout_change_password','spinout_approve_user','spinout_set_moderator','spinout_set_suspended') and p.prosecdef")).n,0);
   });
   await t.test('anonymous credential and account-claim access denied',async()=>{
    await as('anon');
@@ -61,7 +62,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
   await t.test('unapproved users cannot read laps, self-approve or insert applications directly',async()=>{
    await as('authenticated',NEW);assert.equal((await scalar('select count(*) n from laps')).n,0);
    await assert.rejects(db.query("insert into profiles(username,nickname,role,auth_user_id) values('attacker','Attacker','admin','"+NEW+"')"),/row-level security/);
-   await assert.rejects(db.query("select spinout_approve_user('legacy_applicant')"),/Admin required/);
+   await assert.rejects(db.query("select spinout_approve_user('legacy_applicant')"),/Admin or moderator required/);
    await assert.rejects(db.query("insert into pending_users(username,nickname,reason,auth_user_id) values('flood','Flood','Track days','"+NEW+"')"),/row-level security/);
   });
   await t.test('member ownership is enforced on submissions and approved data',async()=>{
@@ -128,6 +129,68 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
    await assert.rejects(db.query("insert into member_garage(car) select 'Garage '||n from generate_series(1,30) n"),/Garage limit/);
    await as('authenticated',ADMIN);assert.equal((await scalar("select spinout_service_counts()->>'garage_vehicles' n")).n,'1');
    await as('anon');await assert.rejects(db.query('select spinout_service_counts()'),/permission denied/);
+  });
+  await t.test('only full admins may appoint and revoke moderators',async()=>{
+   await as('authenticated',MEMBER);
+   await assert.rejects(db.query("select spinout_set_moderator('member',true)"),/Admin required/);
+   await as('authenticated',ADMIN);
+   await db.query("select spinout_set_moderator('newdriver',true)");
+   await assert.rejects(db.query("select spinout_set_moderator('admin',true)"),/active member/);
+   await assert.rejects(db.query("select spinout_set_moderator('banned',true)"),/active member/);
+   await assert.rejects(db.query("select spinout_set_moderator('member',null)"),/on or off/);
+   await as('authenticated',NEW);
+   assert.equal((await scalar("select spinout_account()->>'moderator' enabled")).enabled,'true');
+   assert.equal((await scalar("select spinout_account()->>'role' role")).role,'member');
+   for(const target of ['member','admin','newdriver']) await assert.rejects(db.query("select spinout_set_moderator('"+target+"',true)"),/Admin required/);
+   assert.equal((await db.query("update profiles set moderator=true,role='admin' where username='newdriver' returning username")).rows.length,0);
+   assert.equal((await db.query("update profiles set auth_user_id=null,nickname='Forged',banned=false where username='member' returning username")).rows.length,0);
+   assert.equal((await db.query("delete from profiles where username='admin' returning username")).rows.length,0);
+   await assert.rejects(db.query("insert into profiles(username,nickname,role,moderator) values('forgedmod','Fake','member',true)"),/row-level security/);
+   await assert.rejects(db.query("select spinout_service_counts()"),/Admin required/);
+  });
+  await t.test('moderators can review content and approve ordinary members only',async()=>{
+   await as('postgres');
+   await db.query("insert into pending_users(username,nickname,reason) values('mod_applicant','New driver','Track days')");
+   await as('authenticated',NEW);
+   await db.query("select spinout_approve_user('mod_applicant')");
+   assert.deepEqual((await db.query("select role,moderator from profiles where username='mod_applicant'")).rows,[{role:'member',moderator:false}]);
+   await db.query("insert into laps(id,track,driver,time,submitted_by,date) values('mod-approved','sow_cw','Member','1:25.000','member','2026-10-20')");
+   await db.query("update laps set time='1:24.000' where id='mod-approved'");
+   assert.equal((await scalar("select time from laps where id='mod-approved'")).time,'1:24.000');
+   await db.query("delete from laps where id='mod-approved'");
+   await db.query("insert into tracks(id,name) values('mod-track','Custom circuit')");
+   await db.query("delete from tracks where id='mod-track'");
+   await db.query("insert into billboards(id,title) values('mod-notice','Club notice')");
+   await db.query("delete from billboards where id='mod-notice'");
+   await db.query("delete from pending_laps where id='mine'");
+   assert.equal((await scalar("select count(*) n from pending_laps where id='mine'")).n,0);
+  });
+  await t.test('moderators cannot suspend staff or change roles through suspension',async()=>{
+   await as('authenticated',NEW);
+   await db.query("select spinout_set_suspended('member',true)");
+   await as('authenticated',MEMBER);assert.equal((await scalar('select count(*) n from laps')).n,0);
+   await assert.rejects(db.query("select spinout_set_suspended('newdriver',true)"),/Moderator required/);
+   await as('authenticated',NEW);await db.query("select spinout_set_suspended('member',false)");
+   for(const target of ['admin','legacy_import']) await assert.rejects(db.query("select spinout_set_suspended('"+target+"',true)"),/Only member/);
+   await assert.rejects(db.query("select spinout_set_suspended('newdriver',true)"),/Only admins/);
+   await as('authenticated',ADMIN);await db.query("select spinout_set_moderator('member',true)");
+   await as('authenticated',NEW);await assert.rejects(db.query("select spinout_set_suspended('member',true)"),/Only admins/);
+   await as('authenticated',ADMIN);await db.query("select spinout_set_moderator('member',false)");
+  });
+  await t.test('revocation and suspension take effect with the same existing identity',async()=>{
+   await as('authenticated',ADMIN);await db.query("select spinout_set_suspended('newdriver',true)");
+   await as('authenticated',NEW);
+   await assert.rejects(db.query("insert into laps(id) values('banned-mod')"),/row-level security/);
+   await assert.rejects(db.query("select spinout_set_suspended('member',true)"),/Moderator required/);
+   await as('authenticated',ADMIN);await db.query("select spinout_set_suspended('newdriver',false)");
+   await db.query("select spinout_set_moderator('newdriver',false)");
+   await as('authenticated',NEW);
+   assert.equal((await scalar("select spinout_account()->>'moderator' enabled")).enabled,'false');
+   await assert.rejects(db.query("insert into laps(id) values('revoked-mod')"),/row-level security/);
+   await assert.rejects(db.query("select spinout_approve_user('mod_applicant')"),/Admin or moderator required/);
+   await assert.rejects(db.query("select spinout_set_suspended('member',true)"),/Moderator required/);
+   await as('anon');
+   for(const q of ["select spinout_set_moderator('member',true)","select spinout_set_suspended('member',true)","select spinout_approve_user('mod_applicant')"]) await assert.rejects(db.query(q),/permission denied/);
   });
  }finally{await db.close();}
 });

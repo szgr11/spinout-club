@@ -30,3 +30,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   outline-offset: 3px;
 }
 ::selection { background: #ffd400; color: #111214; }
+
+/* Product text stays legible when embedded in a light-themed host preview. */
+.club-page,.events-page { color:#e8e8e8; }
+.club-page :where(h1,h2,h3,h4),.events-page :where(h1,h2,h3,h4) { color:#e8e8e8; }
+.club-page button,.events-page button { color:inherit; }
+
+/* One font source for all pages, native controls and embedded preview text. */
+.club-page,.club-page *,.events-page,.events-page *,.club-header,.club-header * {
+  font-family:var(--font-club)!important;
+}
+.club-page :is(button,input,select,textarea,article,section,dialog),
+.events-page :is(button,input,select,textarea,article,section,dialog),
+.club-header :is(button,a) { border-radius:0; }
+html { scrollbar-gutter:stable; }
