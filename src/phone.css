@@ -1,0 +1,172 @@
+/* Phone-only layout. No declarations outside these breakpoints. */
+@media (max-width:600px) {
+  .club-page,.events-page { background-attachment:scroll; }
+  .club-page .club-main,.events-page .events-main { padding:20px 12px!important; min-width:0; }
+  .club-page button,.events-page button { min-height:40px; }
+  :is(.club-page,.events-page) :is(input,select,textarea):not([aria-hidden=true]) {
+    font-size:16px!important; max-width:100%; min-width:0;
+  }
+  :is(.club-page,.events-page) input[type=checkbox] { flex-shrink:0; }
+  .club-page .club-main > div,.club-tab-panel { min-width:0; }
+
+  /* Two deliberate header rows, rather than wrapped desktop navigation. */
+  .club-header .club-header-inner {
+    display:grid; grid-template-columns:minmax(0,1fr) auto;
+    gap:10px 8px; padding:10px 12px 0;
+  }
+  .club-header .club-logo { font-size:13px; letter-spacing:1px; }
+  .club-header .club-logo > span { display:none; }
+  .club-header .club-header-actions { margin:0; gap:6px; flex-wrap:nowrap; min-width:0; }
+  .club-header .club-header-actions > :is(a,button) {
+    min-height:36px; padding:6px 8px; font-size:9px; letter-spacing:0;
+  }
+  .club-header .club-header-account strong { font-size:11px; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .club-header .club-header-account span { font-size:8px; margin-top:3px; }
+  .club-header .club-navigation {
+    grid-column:1/-1; display:grid; grid-auto-flow:column;
+    grid-auto-columns:minmax(0,1fr); gap:2px; order:3; width:100%;
+  }
+  .club-header .club-navigation > :is(a,button) {
+    min-width:0; min-height:52px; flex-direction:column; justify-content:center;
+    gap:5px; padding:7px 2px 9px; letter-spacing:0; position:relative;
+  }
+  .club-header .club-navigation svg { width:15px; height:15px; flex-shrink:0; }
+  .club-header .club-nav-label { font-size:0; }
+  .club-header .club-nav-label::before { content:attr(data-phone-label); font-size:9px; white-space:nowrap; }
+  .club-header .club-nav-count { position:absolute; top:2px; right:3px; font-size:8px; padding:1px 3px; }
+
+  .club-page .club-hero,.events-page .club-hero { padding:18px 16px; margin-bottom:20px; min-height:0; gap:16px; }
+  .club-page .club-hero-eyebrow,.events-page .club-hero-eyebrow { font-size:9px; letter-spacing:.6px; margin-bottom:10px; }
+  .club-page .club-hero h1,.events-page .club-hero h1 { font-size:28px; line-height:1.2; }
+  .club-hero .club-hero-copy { flex-basis:65%; }
+  .club-hero .club-hero-aside { flex-basis:100%; }
+  .club-hero .club-artwork-helmet { width:76px; max-width:25%; }
+  .club-hero :is(.board-benchmark,.entry-summary,.control-summary) { padding-top:12px; }
+  .club-hero :is(.board-benchmark,.entry-summary,.control-summary) strong { font-size:25px; margin:5px 0; }
+  .club-page .club-tabs { flex-wrap:nowrap!important; overflow-x:auto; gap:0!important; scrollbar-width:thin; }
+  .club-page .club-tabs > button { flex-shrink:0; font-size:10px!important; letter-spacing:.5px!important; padding:12px 10px!important; }
+
+  /* A date picker with counts; full event information is in the list and tray. */
+  .events-page .events-toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .events-page .events-toolbar label { padding:6px 10px; font-size:8px; letter-spacing:.3px; }
+  .events-page .events-toolbar select { font-size:16px!important; min-height:28px; padding:3px 0 0; line-height:1.2; text-overflow:ellipsis; }
+  .events-page .club-hero .events-tallies { gap:6px; }
+  .events-page .club-hero .events-tally { padding-left:10px; }
+  .events-page .club-hero .events-tally strong { font-size:25px; }
+  .events-page .club-hero .events-tally span { font-size:9px; white-space:normal; line-height:1.5; }
+  .events-page .events-offer-filter { font-size:10px; line-height:1.6; min-height:32px; margin-top:6px; }
+  .events-page .events-offer-filter input { width:16px; height:16px; }
+  .events-page .events-monthbar { display:grid; gap:12px; margin:20px 0 14px; }
+  .events-page .events-monthnav { display:grid; grid-template-columns:40px minmax(0,1fr) 40px auto; gap:5px; }
+  .events-page .events-monthnav button { justify-content:center; min-height:40px; }
+  .events-page .events-monthnav h2 { min-width:0; font-size:16px; letter-spacing:-.5px; }
+  .events-page .events-monthnav .today-button { margin:0; padding:8px; font-size:10px; }
+  .events-page .events-layout { display:grid; grid-template-columns:1fr 1fr; }
+  .events-page .events-layout button { justify-content:center; font-size:11px; }
+  .events-page .calendar-context { gap:8px; align-items:center; font-size:10px; line-height:1.7; }
+  .events-page .calendar-context small { display:block; font-size:9px; }
+  .events-page .calendar-context .events-text { font-size:10px!important; text-align:right; padding:6px; }
+  .events-page .events-weekdays > div { text-align:center; font-size:10px; padding:10px 0; }
+  .events-page .events-day { min-height:66px; padding:0; min-width:0; }
+  .events-page .events-day .day-number {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    width:100%; min-height:66px; padding:6px 0; gap:4px; font-size:12px!important;
+  }
+  .events-page .day-number b { min-width:25px; height:25px; display:grid; place-items:center; }
+  .events-page .day-number .day-caption { font-size:8px; letter-spacing:0; line-height:1.4; min-height:12px; }
+  .events-page .events-day.has-events:not(.is-today) { background:#302b16; box-shadow:inset 0 -2px 0 #cfb53b; }
+  .events-page .events-day.has-events .day-number b { color:#ffe675; font-weight:700; }
+  .events-page .events-day.has-events.is-today .day-number b { color:#111214; }
+  .events-page .events-day.has-events .day-caption { background:#ffd400; color:#111214; font-weight:700; padding:1px 2px; min-height:15px; }
+  .events-page .events-day.is-past .day-caption { visibility:hidden; }
+  .events-page .events-day :is(.calendar-chip,.events-more) { display:none; }
+  .events-page .events-list-heading { margin:24px 0 12px; }
+  .events-page .events-list-heading h3 { font-size:14px; line-height:1.6; }
+  .events-page .events-list-heading h3 span { margin-left:4px; padding:3px 6px; }
+  .events-page .event-card { display:grid; grid-template-columns:32px minmax(0,1fr); gap:12px; padding:14px 12px; align-items:start; }
+  .events-page .event-date { min-width:0; padding-top:2px; }
+  .events-page .event-date strong { font-size:26px; }
+  .events-page .event-card-main { border:0; padding:0; min-width:0; }
+  .events-page .event-card h3 { font-size:15px; line-height:1.5; margin:8px 0; overflow-wrap:anywhere; }
+  .events-page .event-card p { font-size:12px; gap:4px; }
+  .events-page .event-labels { gap:4px; }
+  .events-page .event-labels span { font-size:8px; padding:3px 4px; letter-spacing:0; }
+  .events-page .event-sources { font-size:10px; line-height:1.8; overflow-wrap:anywhere; }
+  .events-page .event-go { grid-column:2; margin:0; min-height:40px; padding:8px 0; font-size:12px; justify-self:start; }
+  .events-page .events-plan-button { min-height:40px; padding:9px 10px; font-size:11px; }
+  .events-page .events-message { padding:24px 16px; font-size:12px; }
+  .events-page dialog.calendar-tray { width:100%; max-height:85dvh; padding:10px 12px max(18px,env(safe-area-inset-bottom)); }
+  .events-page .calendar-tray .events-list-heading { top:-10px; margin:0 0 12px; padding:8px 0; }
+  .events-page .calendar-tray-close { width:40px; height:40px; }
+  .events-page .events-footnote { gap:10px; margin-top:28px; padding-top:16px; }
+  .events-page .organizer-links { grid-template-columns:minmax(0,1fr); }
+  .events-page :is(.organizer-directory,.calendar-health) summary { min-height:44px; padding:12px 0; }
+
+  /* Keep all data, but turn public lap rows into compact, expandable records. */
+  .club-page .club-circuit-options { display:grid!important; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px!important; }
+  .club-page .club-circuit-options > button { min-width:0; flex-wrap:wrap; gap:5px!important; padding:10px!important; text-align:left; }
+  .club-page .club-circuit-options > button > span:first-child { flex-basis:100%; font-size:11px; line-height:1.5; }
+  .club-page .club-board-heading { padding:16px!important; flex-wrap:wrap; gap:14px; }
+  .club-page .club-board-heading h2 { font-size:22px!important; letter-spacing:0!important; overflow-wrap:anywhere; }
+  .club-page .club-board-heading > div:first-child > div:last-child { flex-wrap:wrap; gap:6px!important; }
+  .club-page .club-board-heading > div:last-child { width:100%; }
+  .club-page .club-board-heading > div:last-child button { flex:1; }
+  .club-page .club-board-results { overflow:visible!important; border:0!important; margin-top:8px; }
+  .club-page :is(.club-lap-table,.club-record-table) { display:block; }
+  .club-page :is(.club-lap-table,.club-record-table) thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .club-page :is(.club-lap-table,.club-record-table) tbody { display:grid; gap:8px; }
+  .club-page :is(.club-lap-table,.club-record-table) tbody > tr {
+    display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:8px;
+    background:#191a1c; border:1px solid #3b3d41!important; padding:14px 12px;
+  }
+  .club-page :is(.club-lap-table,.club-record-table) td { padding:0!important; min-width:0; white-space:normal; overflow-wrap:anywhere; line-height:1.6; }
+  .club-page .club-lap-table td:nth-child(1) { grid-area:1 / 1; }
+  .club-page .club-lap-table td:nth-child(2) { grid-area:1 / 2; }
+  .club-page .club-lap-table td:nth-child(3) { grid-area:1 / 3; font-size:15px; }
+  .club-page .club-lap-table td:nth-child(4) { grid-area:2 / 3; text-align:right; font-size:10px; }
+  .club-page .club-lap-table td:nth-child(5) { grid-area:2 / 1 / 3 / 3; font-size:11px; }
+  .club-page .club-lap-table td:nth-child(n+6):nth-child(-n+12) { display:none; }
+  .club-page .club-lap-table td:nth-child(13) { grid-area:3 / 1 / 4 / -1; display:flex; flex-wrap:wrap; gap:8px; }
+  .club-page .club-lap-table .phone-lap-details { display:inline-flex!important; align-items:center; background:transparent; color:#ffd400; border:1px solid #625a31; padding:7px 10px; font-size:10px; min-height:36px; }
+  .club-page .club-lap-table tr[data-details-open=true] td:nth-child(n+6):nth-child(-n+12) { display:grid; grid-template-columns:90px minmax(0,1fr); gap:8px; grid-column:1/-1; border-top:1px solid #303235; padding-top:8px!important; }
+  .club-page .club-lap-table tr[data-details-open=true] td:nth-child(n+6):nth-child(-n+12)::before { content:attr(data-label); color:#b7bbb1; font-size:10px; }
+  .club-page .club-record-table tbody > tr { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .club-page .club-record-table td:first-child { grid-column:1/-1; }
+  .club-page .club-record-table td::before { content:attr(data-label); display:block; color:#b7bbb1; font-size:9px; letter-spacing:.5px; margin-bottom:3px; }
+  .club-page .club-record-wrap { border:0!important; overflow:visible!important; }
+  .club-page .club-table-scroll { max-width:100%; overscroll-behavior-x:contain; scrollbar-width:thin; }
+  .club-page .club-table-scroll td { min-width:90px; }
+  .club-page .club-table-scroll :is(th,td) { padding:10px!important; }
+
+  .club-page .lap-submit-grid { gap:12px!important; }
+  .club-page .lap-submit-grid > div,.club-page .club-proof-panel { padding:16px!important; min-width:0; }
+  .club-page .club-proof-picker { flex-wrap:wrap; }
+  .club-page .club-history-filters { display:grid!important; grid-template-columns:minmax(0,1fr); gap:10px!important; }
+  .club-page .club-history-filters label { display:grid; gap:5px; min-width:0; }
+  .club-page .club-history-filters select { width:100%!important; margin-left:0!important; }
+  :is(.club-page,.events-page) .member-tool { padding:12px; line-height:1.6; }
+  :is(.club-page,.events-page) .member-tool label { min-width:0; }
+  :is(.club-page,.events-page) .member-tool select { width:100%; }
+  :is(.club-page,.events-page) .member-tool button { min-height:40px; padding:8px 10px; font-size:11px; }
+  .club-page .club-stat-grid { gap:8px!important; margin-bottom:20px!important; }
+  .club-page .club-stat { min-width:0; padding:12px!important; }
+  .club-page .lap-history-graphic { padding:16px; margin-bottom:16px; }
+  .club-page .garage-setup { gap:10px; padding:12px 0; }
+  .club-page .garage-setup > div { display:grid; grid-template-columns:90px minmax(0,1fr); gap:8px; }
+  .club-page .garage-setup dt { margin:0; font-size:10px; }
+  .club-page .garage-setup dd { font-size:11px; }
+  .club-page .club-review-card { grid-template-columns:minmax(0,1fr)!important; }
+  .club-page .club-edit-grid { grid-template-columns:minmax(0,1fr)!important; padding:16px!important; }
+  .club-page .club-modal { padding:12px!important; }
+  .club-page .club-modal > div { max-height:calc(100dvh - 24px)!important; overflow:auto; overscroll-behavior:contain; }
+  .club-page .club-toast { left:12px; right:12px!important; top:12px!important; max-width:none!important; }
+
+  /* The sign-in card and native controls must fit above a phone keyboard. */
+  .club-page > .club-header + .club-auth-box { width:calc(100% - 24px)!important; padding:16px!important; margin:24px auto!important; }
+}
+
+@media (max-width:360px) {
+  .club-header .club-header-actions > :is(a,button) { padding:6px; font-size:8px; }
+  .events-page .events-monthnav h2 { font-size:14px; }
+  .club-page > .club-header + .club-auth-box { width:calc(100% - 16px)!important; padding:0!important; border:0!important; }
+}
