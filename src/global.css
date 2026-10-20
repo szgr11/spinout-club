@@ -1,4 +1,5 @@
 @import './club-motion.css';
+@import './phone.css';
 
 :root {
   --font-club: "JetBrains Mono Variable", "JetBrains Mono", Menlo, Consolas, monospace;

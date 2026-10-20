@@ -745,7 +745,7 @@ export default function App({ publicView = false }) {
           <Header session={session} onLogout={handleLogout} view={view} setView={setView}
             pendingCount={Object.keys(pending).length + pendingLaps.length + reports.length}
           />
-          <main style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px' }}>
+          <main className="club-main" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px' }}>
             {view === 'leaderboards' && (
               <LeaderboardView
                 laps={laps}
@@ -853,7 +853,7 @@ function BootScreen() {
 function Toast({ msg, kind }) {
   const colors = { info: C.text, success: C.green, error: C.red, warn: C.accent };
   return (
-    <div className="club-tab-panel" style={{
+    <div className="club-tab-panel club-toast" style={{
       position: 'fixed', top: 20, right: 20, zIndex: 1000,
       background: C.panel, border: `1px solid ${colors[kind] || C.border}`,
       padding: '12px 18px', fontFamily: mono, fontSize: 12,
@@ -895,6 +895,7 @@ function Field({ label, children, hint }) {
 
 export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, billboards, session, onDeleteBillboard, onReportLap, reports }) {
   const [filterType, setFilterType] = useState('all');
+  const [expandedLaps,setExpandedLaps]=useState({});
   const [lightbox, setLightbox] = useState(null);   // {imageData, driver, time}
   const [reportTarget, setReportTarget] = useState(null); // lap object
   const trackLaps = useMemo(() => selectPersonalBests(laps,{track:activeTrack,type:filterType}), [laps, activeTrack, filterType]);
@@ -957,7 +958,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
               <div style={{ fontFamily: mono, fontSize: 9, color: C.textFaint, letterSpacing: 3, marginBottom: 8 }}>
                 {region.toUpperCase()}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div className="club-circuit-options" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {allTracks.filter(t => t.region === region).map(t => {
                   const active = t.id === activeTrack;
                   const count = laps.filter(l => l.track === t.id).length;
@@ -992,7 +993,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
         </div>
       </div>
 
-      <div className="scanline" style={{
+      <div className="scanline club-board-heading" style={{
         background: C.panel, border: `1px solid ${C.border}`,
         padding: '20px 24px',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
@@ -1037,8 +1038,8 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
           <div style={{ marginTop: 4, color: C.textFaint, fontSize: 10 }}>Submit a lap to add an entry.</div>
         </div>
       ) : (
-        <div style={{ border: `1px solid ${C.border}`, borderTop: 'none', overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
+        <div className="club-board-results" style={{ border: `1px solid ${C.border}`, borderTop: 'none', overflow: 'auto' }}>
+          <table className="club-lap-table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
             <thead>
               <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
                 <Th>BOARD RANK</Th>
@@ -1063,11 +1064,11 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                 const userAlreadyReported = (reports || []).some(r => r.lapKey === l._key && r.reporter === session?.username);
                 const reportCount = (reports || []).filter(r => r.lapKey === l._key).length;
                 return (
-                  <tr key={l._key} style={{
+                  <tr key={l._key} data-details-open={!!expandedLaps[l._key]} style={{
                     borderBottom: `1px solid ${C.border}`,
                     background: i === 0 ? 'rgba(255,212,0,0.04)' : 'transparent'
                   }}>
-                    <Td>
+                    <Td label="Rank">
                       <span className={`club-rank club-rank-${i+1}`} style={{
                         color: i === 0 ? C.accent : i < 3 ? C.text : C.textDim,
                         fontWeight: i === 0 ? 700 : 400
@@ -1075,12 +1076,12 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                         {`#${i + 1}`}
                       </span>
                     </Td>
-                    <Td>
+                    <Td label="Driver">
                       <span style={{ color: i === 0 ? C.accent : C.text, fontWeight: i === 0 ? 700 : 500 }}>
                         {l.driver}
                       </span>
                     </Td>
-                    <Td>
+                    <Td label="Time">
                       <span style={{
                         fontWeight: 700,
                         color: i === 0 ? C.accent : C.text,
@@ -1089,18 +1090,18 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                         {l.time}
                       </span>
                     </Td>
-                    <Td>
+                    <Td label="Gap">
                       <span style={{ color: i === 0 ? C.textFaint : C.textDim, fontVariantNumeric: 'tabular-nums' }}>
                         {i === 0 ? '—' : `+${gap.toFixed(3)}`}
                       </span>
                     </Td>
-                    <Td><span style={{ color: C.textDim }}>{l.car}</span></Td>
-                    <Td><span style={{ color: C.textDim, fontVariantNumeric: 'tabular-nums' }}>{l.hp || '—'}</span></Td>
-                    <Td><span style={{ color: C.textDim }}>{l.tire}</span></Td>
-                    <Td><span style={{ color: C.textDim }}>{l.temp}</span></Td>
-                    <Td><span style={{ color: C.textFaint, fontSize: 11 }}>{l.organizer || '—'}</span></Td>
-                    <Td><span style={{ color: C.textFaint, fontVariantNumeric: 'tabular-nums', fontSize: 11 }}>{l.date || '—'}</span></Td>
-                    <Td>
+                    <Td label="Vehicle"><span style={{ color: C.textDim }}>{l.car}</span></Td>
+                    <Td label="Wheel hp"><span style={{ color: C.textDim, fontVariantNumeric: 'tabular-nums' }}>{l.hp || '—'}</span></Td>
+                    <Td label="Tires"><span style={{ color: C.textDim }}>{l.tire}</span></Td>
+                    <Td label="Temperature"><span style={{ color: C.textDim }}>{l.temp}</span></Td>
+                    <Td label="Event"><span style={{ color: C.textFaint, fontSize: 11 }}>{l.organizer || '—'}</span></Td>
+                    <Td label="Date"><span style={{ color: C.textFaint, fontVariantNumeric: 'tabular-nums', fontSize: 11 }}>{l.date || '—'}</span></Td>
+                    <Td label="Lap type">
                       <span style={{
                         fontSize: 9, padding: '2px 6px', letterSpacing: 1,
                         border: `1px solid ${l.type === 'optimal' ? C.accent : C.borderLight}`,
@@ -1109,7 +1110,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                         {l.type === 'optimal' ? 'OPT' : 'REAL'}
                       </span>
                     </Td>
-                    <Td>
+                    <Td label="Proof">
                       {l.imageData ? (
                         <button onClick={() => setLightbox({ imageData: l.imageData, driver: l.driver, time: l.time })} style={{
                           background: 'transparent', border: `1px solid ${C.border}`,
@@ -1122,7 +1123,8 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                         <span style={{ color: C.textFaint, fontSize: 10 }}>—</span>
                       )}
                     </Td>
-                    <Td>
+                    <Td label="Actions">
+                      <button type="button" className="phone-lap-details" style={{display:'none'}} aria-expanded={!!expandedLaps[l._key]} aria-label={`${expandedLaps[l._key]?'Hide':'Show'} lap details for ${l.driver}`} onClick={()=>setExpandedLaps(current=>({...current,[l._key]:!current[l._key]}))}>{expandedLaps[l._key]?'Less detail −':'Lap details +'}</button>
                       {session && l.submittedBy !== session.username && (
                         <button onClick={() => setReportTarget(l)} disabled={userAlreadyReported} title={userAlreadyReported ? 'Already reported' : 'Report suspicious time'} style={{
                           background: 'transparent', border: `1px solid ${userAlreadyReported ? C.borderLight : C.border}`,
@@ -1183,7 +1185,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
 
 function ImageLightbox({ imageData, driver, time, onClose }) {
   return (
-    <div onClick={onClose} style={{
+    <div className="club-modal" onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 200, padding: 40, cursor: 'zoom-out'
@@ -1219,7 +1221,7 @@ function ReportLapModal({ lap, allTracks, onClose, onSubmit }) {
   };
 
   return (
-    <div onClick={onClose} style={{
+    <div className="club-modal" onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 150, padding: 20
@@ -1270,7 +1272,7 @@ function ReportLapModal({ lap, allTracks, onClose, onSubmit }) {
 
 function Th({ children }) {
   return (
-    <th style={{
+    <th scope="col" style={{
       textAlign: 'left', padding: '12px 14px',
       fontFamily: mono, fontSize: 10, letterSpacing: 2,
       color: C.textDim, fontWeight: 500
@@ -1280,8 +1282,8 @@ function Th({ children }) {
   );
 }
 
-function Td({ children }) {
-  return <td style={{ padding: '12px 14px' }}>{children}</td>;
+function Td({ children, label }) {
+  return <td data-label={label} style={{ padding: '12px 14px' }}>{children}</td>;
 }
 
 function Stat({ label, value, accent }) {
@@ -1439,12 +1441,12 @@ export function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
       </div>
 
       {/* Image upload — full width */}
-      <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 24, marginTop: 24 }}>
+      <div className="club-proof-panel" style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 24, marginTop: 24 }}>
         <div style={{ fontFamily: mono, fontSize: 11, color: C.accent, letterSpacing: 2, marginBottom: 16 }}>
           ▸ PROOF OF LAP (OPTIONAL)
         </div>
         <Field label="UPLOAD IMAGE" hint="screenshot of timing display, in-car footage, dashboard, etc. — auto-compressed to ~1200px JPEG">
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div className="club-proof-picker" style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <label style={{
               flex: form.imageData ? '0 0 auto' : 1,
               padding: 14, background: C.bg, border: `1px dashed ${C.border}`,
@@ -1529,7 +1531,7 @@ function AdminView({
     <div>
       <ClubHero eyebrow="THE SPINOUT CLUB // CLUB CONTROL" title={isAdmin(session)?'Admin dashboard':'Moderator dashboard'} aside={<div className="control-summary"><span>Awaiting review</span><strong>{pendingLaps.length+Object.keys(pending).length+reports.length}</strong><small>Laps · applications · reports</small></div>}/>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
+      <div className="club-tabs" style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
         {sections.map(s => (
           <button key={s.id} onClick={() => setSection(s.id)} style={{
             padding: '10px 14px', background: 'transparent', border: 'none',
@@ -1776,7 +1778,7 @@ function PendingUsersPanel({ pending, onApprove, onReject }) {
 function MembersPanel({ users, laps, onBan, onUnban, session, onSetModerator, moderatorBusy }) {
   return (
     <div><p className="moderator-note">{isAdmin(session)?'Appoint trusted members as moderators here. Mods can review laps, applications and reports, manage club content, and suspend ordinary members. Only admins can grant or remove moderator access.':'You can moderate laps, applications, reports and club content. Moderator access and staff accounts are managed by admins.'}</p>
-    <div style={{ border: `1px solid ${C.border}`, overflow: 'auto' }}>
+    <div className="club-table-scroll" style={{ border: `1px solid ${C.border}`, overflow: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
         <thead>
           <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
@@ -1902,7 +1904,7 @@ function AllLapsPanel({ laps, allTracks, onDelete, onEdit, onViewHistory }) {
         </button>
       </div>
 
-      <div style={{ border: `1px solid ${C.border}`, overflow: 'auto', maxHeight: 640 }}>
+      <div className="club-table-scroll" style={{ border: `1px solid ${C.border}`, overflow: 'auto', maxHeight: 640 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 11 }}>
           <thead>
             <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}`, position: 'sticky', top: 0, zIndex: 1 }}>
@@ -1985,7 +1987,7 @@ function ReportsPanel({ reports, laps, users, allTracks, onResolveRemove, onDism
         const reporterInfo = users[r.reporter];
         const lapStillExists = !!lap;
         return (
-          <div key={r._key} style={{
+          <div className="club-review-card" key={r._key} style={{
             background: C.panel, border: `1px solid ${C.border}`,
             borderLeft: `3px solid ${C.red}`, padding: 18,
             display: 'grid', gridTemplateColumns: '1fr auto', gap: 18
@@ -2060,7 +2062,7 @@ function HistoryModal({ lap, allTracks, onClose }) {
   };
 
   return (
-    <div onClick={onClose} style={{
+    <div className="club-modal" onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 100, padding: 20
@@ -2125,7 +2127,7 @@ function EditLapModal({ lap, allTracks, onClose, onSave }) {
   const setF = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
   return (
-    <div style={{
+    <div className="club-modal" style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 100, padding: 20
@@ -2146,7 +2148,7 @@ function EditLapModal({ lap, allTracks, onClose, onSave }) {
           }}><X size={18} /></button>
         </div>
 
-        <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div className="club-edit-grid" style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <Field label="DRIVER"><input value={form.driver || ''} onChange={e => setF('driver', e.target.value)} style={inputStyle} /></Field>
           <Field label="TIME (M:SS.xx)"><input value={form.time || ''} onChange={e => setF('time', e.target.value)} style={inputStyle} /></Field>
           <Field label="TRACK">
@@ -2221,7 +2223,7 @@ function TracksPanel({ allTracks, customTracks, laps, onAdd, onDelete }) {
         </button>
       </div>
 
-      <div style={{ border: `1px solid ${C.border}`, overflow: 'auto', maxHeight: 600 }}>
+      <div className="club-table-scroll" style={{ border: `1px solid ${C.border}`, overflow: 'auto', maxHeight: 600 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
           <thead>
             <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
@@ -2395,7 +2397,7 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
         <StatBlock label="TRACK DAYS" value={trackDayCount} />
       </div>
 
-      <div style={{ display: 'flex', flexWrap:'wrap', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+      <div className="club-tabs" style={{ display: 'flex', flexWrap:'wrap', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
         {[
           { id: 'bests', label: 'PERSONAL BESTS' },
           { id: 'history', label: `LAP HISTORY (${myLaps.length})` },
@@ -2422,8 +2424,8 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
         personalBests.length === 0 ? (
           <Empty message="NO APPROVED LAPS YET" />
         ) : (
-          <div style={{ border: `1px solid ${C.border}`,overflowX:'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
+          <div className="club-record-wrap" style={{ border: `1px solid ${C.border}`,overflowX:'auto' }}>
+            <table className="club-record-table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
               <thead>
                 <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
                   <Th>CIRCUIT</Th>
@@ -2441,13 +2443,13 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
                   const {position:idx,total}=ranks.get(personalBestKey(lap))||{};
                   return (
                     <tr key={lap._key} style={{ borderBottom: `1px solid ${C.border}` }}>
-                      <Td>{t?.name} <span style={{ color: C.textFaint }}>{t?.variant}</span></Td>
-                      <Td><span style={{ color: C.accent, fontWeight: 700 }}>{lap.time}</span></Td>
-                      <Td><span style={{ color: C.textDim }}>{lap.car}</span></Td>
-                      <Td><span style={{ color: C.textDim }}>{lap.tire}</span></Td>
-                      <Td><span style={{ color: C.textFaint }}>{lap.date || '—'}</span></Td>
-                      <Td>{lap.type==='optimal'?'OPT':'REAL'}</Td>
-                      <Td>
+                      <Td label="Circuit">{t?.name} <span style={{ color: C.textFaint }}>{t?.variant}</span></Td>
+                      <Td label="Best time"><span style={{ color: C.accent, fontWeight: 700 }}>{lap.time}</span></Td>
+                      <Td label="Vehicle"><span style={{ color: C.textDim }}>{lap.car}</span></Td>
+                      <Td label="Tires"><span style={{ color: C.textDim }}>{lap.tire}</span></Td>
+                      <Td label="Date"><span style={{ color: C.textFaint }}>{lap.date || '—'}</span></Td>
+                      <Td label="Lap type">{lap.type==='optimal'?'OPT':'REAL'}</Td>
+                      <Td label="Board rank">
                         <span style={{ color: idx === 1 ? C.accent : idx <= 3 ? C.text : C.textDim, fontWeight: idx === 1 ? 700 : 400 }}>
                           #{idx} of {total}
                         </span>
@@ -2462,20 +2464,20 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
       )}
 
       {tab==='history'&&<>
-        <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16,fontFamily:mono,fontSize:11}}>
+        <div className="club-history-filters" style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16,fontFamily:mono,fontSize:11}}>
           <label>Circuit <select aria-label="History circuit" value={historyTrack} onChange={e=>setHistoryTrack(e.target.value)} style={{...inputStyle,width:'auto',maxWidth:'100%',marginLeft:8}}><option value="all">All circuits</option>{[...new Set(myLaps.map(l=>l.track))].map(id=>{const t=allTracks.find(t=>t.id===id);return <option key={id} value={id}>{t?`${t.name} ${t.variant||''}`:id}</option>;})}</select></label>
           <label>Vehicle <select aria-label="History vehicle" value={historyCar} onChange={e=>setHistoryCar(e.target.value)} style={{...inputStyle,width:'auto',maxWidth:'100%',marginLeft:8}}><option value="all">All vehicles</option>{historyCars.map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>
           <label>Lap type <select aria-label="History lap type" value={historyType} onChange={e=>setHistoryType(e.target.value)} style={{...inputStyle,width:'auto',marginLeft:8}}><option value="all">All</option><option value="real">Real</option><option value="optimal">Optimal</option></select></label>
         </div>
-        {!history.length?<Empty message="NO APPROVED LAPS MATCH THESE FILTERS"/>:<div style={{border:`1px solid ${C.border}`,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontFamily:mono,fontSize:12}}><thead><tr style={{background:C.panel2,borderBottom:`1px solid ${C.border}`}}><Th>DATE</Th><Th>CIRCUIT</Th><Th>DRIVER</Th><Th>TIME</Th><Th>VEHICLE</Th><Th>TIRE</Th><Th>TYPE</Th><Th>EVENT</Th></tr></thead><tbody>{history.map(lap=>{const t=allTracks.find(t=>t.id===lap.track);return <tr key={lap._key??lap.id} style={{borderBottom:`1px solid ${C.border}`}}><Td>{lap.date||'—'}</Td><Td>{t?.name||lap.track} <span style={{color:C.textFaint}}>{t?.variant}</span></Td><Td>{lap.driver}</Td><Td><span style={{color:C.accent,fontWeight:700}}>{lap.time}</span></Td><Td>{lap.car||'—'}</Td><Td>{lap.tire||'—'}</Td><Td>{lap.type==='optimal'?'OPT':'REAL'}</Td><Td>{lap.organizer||'—'}</Td></tr>;})}</tbody></table></div>}
+        {!history.length?<Empty message="NO APPROVED LAPS MATCH THESE FILTERS"/>:<div className="club-record-wrap" style={{border:`1px solid ${C.border}`,overflowX:'auto'}}><table className="club-record-table" style={{width:'100%',borderCollapse:'collapse',fontFamily:mono,fontSize:12}}><thead><tr style={{background:C.panel2,borderBottom:`1px solid ${C.border}`}}><Th>DATE</Th><Th>CIRCUIT</Th><Th>DRIVER</Th><Th>TIME</Th><Th>VEHICLE</Th><Th>TIRE</Th><Th>TYPE</Th><Th>EVENT</Th></tr></thead><tbody>{history.map(lap=>{const t=allTracks.find(t=>t.id===lap.track);return <tr key={lap._key??lap.id} style={{borderBottom:`1px solid ${C.border}`}}><Td label="Date">{lap.date||'—'}</Td><Td label="Circuit">{t?.name||lap.track} <span style={{color:C.textFaint}}>{t?.variant}</span></Td><Td label="Driver">{lap.driver}</Td><Td label="Time"><span style={{color:C.accent,fontWeight:700}}>{lap.time}</span></Td><Td label="Vehicle">{lap.car||'—'}</Td><Td label="Tires">{lap.tire||'—'}</Td><Td label="Lap type">{lap.type==='optimal'?'OPT':'REAL'}</Td><Td label="Event">{lap.organizer||'—'}</Td></tr>;})}</tbody></table></div>}
       </>}
 
       {tab === 'pending' && (
         myPending.length === 0 ? (
           <Empty message="NO PENDING SUBMISSIONS" />
         ) : (
-          <div style={{ border: `1px solid ${C.border}` }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
+          <div className="club-record-wrap" style={{ border: `1px solid ${C.border}` }}>
+            <table className="club-record-table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
               <thead>
                 <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
                   <Th>CIRCUIT</Th>
@@ -2490,11 +2492,11 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
                   const t = allTracks.find(x => x.id === lap.track);
                   return (
                     <tr key={lap._key} style={{ borderBottom: `1px solid ${C.border}` }}>
-                      <Td>{t?.name} <span style={{ color: C.textFaint }}>{t?.variant}</span></Td>
-                      <Td><span style={{ color: C.accent, fontWeight: 700 }}>{lap.time}</span></Td>
-                      <Td><span style={{ color: C.textDim }}>{lap.car}</span></Td>
-                      <Td><span style={{ color: C.textFaint }}>{new Date(lap.submittedAt).toLocaleString()}</span></Td>
-                      <Td>
+                      <Td label="Circuit">{t?.name} <span style={{ color: C.textFaint }}>{t?.variant}</span></Td>
+                      <Td label="Time"><span style={{ color: C.accent, fontWeight: 700 }}>{lap.time}</span></Td>
+                      <Td label="Vehicle"><span style={{ color: C.textDim }}>{lap.car}</span></Td>
+                      <Td label="Submitted"><span style={{ color: C.textFaint }}>{new Date(lap.submittedAt).toLocaleString()}</span></Td>
+                      <Td label="Status">
                         <span style={{
                           fontSize: 10, padding: '2px 6px', letterSpacing: 1.5,
                           border: `1px solid ${C.accent}`, color: C.accent
