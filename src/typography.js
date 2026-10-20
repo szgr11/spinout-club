@@ -1,1 +1,1 @@
-export const CLUB_FONT = '"JetBrains Mono Variable", "JetBrains Mono", Menlo, Consolas, monospace';
+export const CLUB_FONT = 'var(--font-club)';

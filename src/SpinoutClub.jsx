@@ -1,5 +1,9 @@
 import { supabase, publicSupabase } from './supabase'
 import { CLUB_FONT } from './typography.js';
+import Header from './ClubHeader.jsx';
+import LapHistoryGraphic from './LapHistoryGraphic.jsx';
+import {ClubHero} from './ClubArtwork.jsx';
+import {isAdmin,canModerate,canSuspend,roleLabel} from './permissions.js';
 import { deduplicateLaps, personalBests as selectPersonalBests, personalBestKey, memberLapHistory, normalizeLapLabel, readLapPages } from './laps.js';
 import { SecureAuth, GoogleButton } from './SecureAuth.jsx';
 import React, { lazy, Suspense, useState, useEffect, useMemo } from 'react';
@@ -57,8 +61,8 @@ const C = {
   border: '#303236',
   borderLight: '#3b3d41',
   text: '#e8e8e8',
-  textDim: '#888',
-  textFaint: '#555',
+  textDim: '#a7aaa3',
+  textFaint: '#92968c',
   accent: '#FFD400',
   accentDim: '#8a7300',
   green: '#5eff8a',
@@ -151,6 +155,7 @@ export default function App({ publicView = false }) {
   const [authReady, setAuthReady] = useState(false);
   const [application, setApplication] = useState(null);
   const [toast, setToast] = useState(null);
+  const [moderatorBusy,setModeratorBusy]=useState('');
 
   // Merged track list, used everywhere
   const allTracks = useMemo(() => [...BUILTIN_TRACKS, ...customTracks], [customTracks]);
@@ -213,7 +218,7 @@ export default function App({ publicView = false }) {
     const [lapsRes, pendingLapsRes, usersRes, pendingUsersRes, tracksRes, billboardsRes, reportsRes] = await Promise.all([
       readLapPages(supabase,'laps','id,track,driver,time,car,hp,tire,temp,date,organizer,type,submitted_by,submitted_at,approved_by,approved_at,history'),
       supabase.from('pending_laps').select('id,track,driver,time,car,hp,tire,temp,date,organizer,type,image,submitted_by,submitted_at'),
-      supabase.from('profiles').select('username,nickname,role,banned,joined_at'),
+      supabase.from('profiles').select('username,nickname,role,moderator,banned,joined_at'),
       supabase.from('pending_users').select('username,nickname,reason,submitted_at'),
       supabase.from('tracks').select('id,name,variant,region,added_by,created_at'),
       supabase.from('billboards').select('id,title,body,pinned,posted_by,posted_at'),
@@ -257,6 +262,7 @@ export default function App({ publicView = false }) {
         username: u.username,
         nickname: u.nickname,
         role: u.role,
+        moderator: u.moderator,
         banned: u.banned,
         joinedAt: u.joined_at
       };
@@ -349,9 +355,9 @@ export default function App({ publicView = false }) {
   const banUser = async (username) => {
     const u = users[username];
     if (!u) return;
-    if (u.role === 'admin') { showToast('Cannot ban an admin', 'error'); return; }
+    if (!canSuspend(session,u)) { showToast('You cannot suspend this account', 'error'); return; }
 
-    const { error } = await supabase.from('profiles').update({ banned: true }).eq('username', username);
+    const { error } = await supabase.rpc('spinout_set_suspended',{p_username:username,p_banned:true});
     if (error) {
       console.error('ban user error', error);
       showToast('Could not ban user', 'error');
@@ -365,9 +371,9 @@ export default function App({ publicView = false }) {
 
   const unbanUser = async (username) => {
     const u = users[username];
-    if (!u) return;
+    if (!u || !canSuspend(session,u)) return;
 
-    const { error } = await supabase.from('profiles').update({ banned: false }).eq('username', username);
+    const { error } = await supabase.rpc('spinout_set_suspended',{p_username:username,p_banned:false});
     if (error) {
       console.error('unban user error', error);
       showToast('Could not unban user', 'error');
@@ -378,6 +384,17 @@ export default function App({ publicView = false }) {
     showToast(`${u.nickname} has been unbanned`, 'success');
   };
 
+
+  const setModerator = async (username,enabled) => {
+    if(!isAdmin(session)||moderatorBusy)return;
+    setModeratorBusy(username);
+    try {
+      const {error}=await supabase.rpc('spinout_set_moderator',{p_username:username,p_enabled:enabled});
+      if(error)throw error;
+      await refreshData();showToast(enabled?'Moderator appointed':'Moderator access removed','success');
+    } catch(error) {showToast(error.message||'Could not update moderator access','error');}
+    finally {setModeratorBusy('');}
+  };
 
   // ----- LAP ADMIN -----
   const deleteLap = async (key) => {
@@ -750,8 +767,11 @@ export default function App({ publicView = false }) {
                 allTracks={allTracks}
               />
             )}
-            {view === 'admin' && session?.role === 'admin' && (
+            {view === 'admin' && canModerate(session) && (
               <AdminView
+                session={session}
+                setModerator={setModerator}
+                moderatorBusy={moderatorBusy}
                 pending={pending}
                 pendingLaps={pendingLaps}
                 approveUser={approveUser}
@@ -849,89 +869,6 @@ function Toast({ msg, kind }) {
   );
 }
 
-function Logo({ size = 'normal' }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: size === 'big' ? 12 : 8 }}>
-      <div style={{
-        fontFamily: mono, fontWeight: 700,
-        fontSize: size === 'big' ? 28 : 16,
-        color: C.accent, letterSpacing: 2,
-      }}>
-        ◆ SPINOUT
-      </div>
-      <div style={{
-        fontFamily: mono, fontSize: size === 'big' ? 14 : 10,
-        color: C.textFaint, letterSpacing: 3
-      }}>
-        // CLUB
-      </div>
-    </div>
-  );
-}
-
-function Header({ session, onLogout, view, setView, pendingCount }) {
-  const tabs = [
-    { id: 'leaderboards', label: 'SPINNER BOARDS', icon: Trophy, href: '/leaderboard' },
-    ...(session ? [{ id: 'submit', label: 'LOG A TIME', icon: Plus, href: '/members' }, { id: 'profile', label: 'PROFILE', icon: User }] : []),
-  ];
-  if (session?.role === 'admin') tabs.push({ id: 'admin', label: 'CONTROL', icon: Shield, badge: pendingCount });
-
-  return (
-    <header style={{
-      borderBottom: `1px solid ${C.border}`,
-      background: C.bg, position: 'sticky', top: 0, zIndex: 50,
-    }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '16px 24px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-        <Logo />
-        <a href="/events" style={{color:C.accent,fontFamily:mono,fontSize:11,textDecoration:'none'}}>EVENTS ↗</a>
-        <nav aria-label="Club navigation" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
-          {tabs.map(t => {
-            const Icon = t.icon;
-            const active = view === t.id;
-            const Tab = t.href ? 'a' : 'button';
-            return (
-              <Tab key={t.id} href={t.href} onClick={t.href ? undefined : () => setView(t.id)} aria-current={active ? 'page' : undefined}
-                style={{
-                  textDecoration: 'none', whiteSpace: 'nowrap',
-                  background: active ? C.panel : 'transparent',
-                  border: `1px solid ${active ? C.borderLight : 'transparent'}`,
-                  color: active ? C.accent : C.textDim,
-                  padding: '8px 14px', fontFamily: mono, fontSize: 11,
-                  letterSpacing: 1.5, display: 'flex', alignItems: 'center', gap: 8,
-                  position: 'relative',
-                  transition: 'all 0.15s'
-                }}>
-                <Icon size={12} strokeWidth={2.5} />
-                {t.label}
-                {t.badge > 0 && (
-                  <span style={{
-                    background: C.accent, color: C.bg, fontSize: 9,
-                    padding: '1px 6px', marginLeft: 2, fontWeight: 700
-                  }}>{t.badge}</span>
-                )}
-              </Tab>
-            );
-          })}
-        </nav>
-        {session ? <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 12, fontFamily: mono, color: C.text }}>{session.nickname}</div>
-            <div style={{ fontSize: 9, fontFamily: mono, color: session.role === 'admin' ? C.accent : C.textFaint, letterSpacing: 1.5 }}>
-              {session.role === 'admin' ? '◆ ADMIN' : '◇ MEMBER'}
-            </div>
-          </div>
-          <button aria-label="Sign out" onClick={onLogout} style={{
-            background: 'transparent', border: `1px solid ${C.border}`,
-            color: C.textDim, padding: 8, display: 'flex'
-          }}>
-            <LogOut size={14} />
-          </button>
-        </div> : <a href="/members" style={{color:C.accent,fontFamily:mono,fontSize:11,textDecoration:'none',padding:10,border:`1px solid ${C.borderLight}`}}>LOG A TIME →</a>}
-      </div>
-    </header>
-  );
-}
-
 function Footer() {
   return (
     <footer style={{ borderTop: `1px solid ${C.border}`, marginTop: 64, padding: '20px 24px' }}>
@@ -969,6 +906,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
 
   return (
     <div>
+      <ClubHero eyebrow="THE SPINOUT CLUB // COMMUNITY LAP TIMES" title="Spinner boards" aside={<div className="board-benchmark"><span>{trackInfo.name} · {trackInfo.variant}</span><strong>{trackLaps[0]?.time||'—'}</strong><small>Fastest logged · {trackLaps.length} entries</small></div>}/>
       {/* Billboards */}
       {billboards.length > 0 && (
         <div style={{ marginBottom: 28 }}>
@@ -992,7 +930,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                   <div style={{ fontFamily: mono, fontSize: 10, color: C.textFaint, marginLeft: 'auto' }}>
                     {new Date(b.postedAt).toLocaleDateString()} · @{b.postedBy}
                   </div>
-                  {session?.role === 'admin' && (
+                  {canModerate(session) && (
                     <button onClick={() => onDeleteBillboard(b._key)} style={{
                       background: 'transparent', border: 'none', color: C.textFaint,
                       padding: 0, marginLeft: 6
@@ -1066,9 +1004,9 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
             SPINNER BOARD // {trackInfo.region.toUpperCase()}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
-            <h1 style={{ margin: 0, fontFamily: mono, fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: 1 }}>
+            <h2 style={{ margin: 0, fontFamily: mono, fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: 1 }}>
               {trackInfo.name}
-            </h1>
+            </h2>
             <span style={{ fontFamily: mono, fontSize: 14, color: C.accent, letterSpacing: 2 }}>
               {trackInfo.variant}
             </span>
@@ -1097,16 +1035,15 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
           border: `1px solid ${C.border}`, borderTop: 'none',
           padding: 60, textAlign: 'center', fontFamily: mono, fontSize: 12, color: C.textFaint
         }}>
-          <AlertCircle size={24} style={{ marginBottom: 12, opacity: 0.5 }} />
           <div>NO LAP TIMES SUBMITTED FOR THIS CONFIG</div>
-          <div style={{ marginTop: 4, color: C.textFaint, fontSize: 10 }}>Be the first to set a benchmark.</div>
+          <div style={{ marginTop: 4, color: C.textFaint, fontSize: 10 }}>Submit a lap to add an entry.</div>
         </div>
       ) : (
         <div style={{ border: `1px solid ${C.border}`, borderTop: 'none', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
             <thead>
               <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
-                <Th>POS</Th>
+                <Th>BOARD RANK</Th>
                 <Th>DRIVER</Th>
                 <Th>TIME</Th>
                 <Th>GAP</Th>
@@ -1133,11 +1070,11 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                     background: i === 0 ? 'rgba(255,212,0,0.04)' : 'transparent'
                   }}>
                     <Td>
-                      <span style={{
+                      <span className={`club-rank club-rank-${i+1}`} style={{
                         color: i === 0 ? C.accent : i < 3 ? C.text : C.textDim,
                         fontWeight: i === 0 ? 700 : 400
                       }}>
-                        {i === 0 ? 'P1' : `P${i + 1}`}
+                        {`#${i + 1}`}
                       </span>
                     </Td>
                     <Td>
@@ -1195,7 +1132,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                           letterSpacing: 1, display: 'inline-flex', alignItems: 'center', gap: 3
                         }}>
                           <Flag size={9} /> {userAlreadyReported ? 'REPORTED' : 'REPORT'}
-                          {reportCount > 0 && session?.role === 'admin' && (
+                          {reportCount > 0 && canModerate(session) && (
                             <span style={{ color: C.accent, marginLeft: 3 }}>({reportCount})</span>
                           )}
                         </button>
@@ -1419,13 +1356,8 @@ export function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
 
   return (
     <div>
+      <ClubHero eyebrow="LAP SUBMISSION" title="Submit entry" aside={<div className="entry-summary"><span>{allTracks.find(t=>t.id===form.track)?.name}</span><strong>{form.time||'M:SS.xxx'}</strong><small>{form.type==='optimal'?'Optimal lap':'Recorded lap'}</small></div>}/>
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontFamily: mono, fontSize: 10, color: C.textFaint, letterSpacing: 3, marginBottom: 4 }}>
-          // SUBMIT LAP TIME
-        </div>
-        <h1 style={{ margin: 0, fontFamily: mono, fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: 1 }}>
-          Submit Entry
-        </h1>
         <div style={{
           marginTop: 12, padding: '10px 14px', background: 'rgba(255,212,0,0.06)',
           border: `1px solid ${C.accentDim}`, fontFamily: mono, fontSize: 11, color: C.accent
@@ -1568,6 +1500,7 @@ export function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
 // ============ ADMIN VIEW ============
 
 function AdminView({
+  session, setModerator, moderatorBusy,
   pending, pendingLaps,
   approveUser, rejectUser, banUser, unbanUser,
   approvePendingLap, rejectPendingLap,
@@ -1591,19 +1524,12 @@ function AdminView({
     { id: 'laps', label: `ALL LAPS`, count: laps.length },
     { id: 'tracks', label: `TRACKS`, count: allTracks.length },
     { id: 'billboards', label: `BILLBOARDS`, count: billboards.length },
-    { id: 'health', label: 'SERVICE HEALTH', count: '↗' },
+    ...(isAdmin(session)?[{ id: 'health', label: 'SERVICE HEALTH', count: '↗' }]:[]),
   ];
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontFamily: mono, fontSize: 10, color: C.accent, letterSpacing: 3, marginBottom: 4 }}>
-          // RACE CONTROL
-        </div>
-        <h1 style={{ margin: 0, fontFamily: mono, fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: 1 }}>
-          Admin Dashboard
-        </h1>
-      </div>
+      <ClubHero eyebrow="THE SPINOUT CLUB // CLUB CONTROL" title={isAdmin(session)?'Admin dashboard':'Moderator dashboard'} aside={<div className="control-summary"><span>Awaiting review</span><strong>{pendingLaps.length+Object.keys(pending).length+reports.length}</strong><small>Laps · applications · reports</small></div>}/>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
         {sections.map(s => (
@@ -1624,7 +1550,7 @@ function AdminView({
         ))}
       </div>
 
-      {section==='health'&&<OptionalFeature><Suspense fallback={<p role="status">Loading service health…</p>}><ServiceStatus/></Suspense></OptionalFeature>}
+      {section==='health'&&isAdmin(session)&&<OptionalFeature><Suspense fallback={<p role="status">Loading service health…</p>}><ServiceStatus/></Suspense></OptionalFeature>}
       {section === 'pending_laps' && (
         <PendingLapsPanel
           pendingLaps={pendingLaps}
@@ -1655,6 +1581,9 @@ function AdminView({
 
       {section === 'members' && (
         <MembersPanel
+          session={session}
+          onSetModerator={setModerator}
+          moderatorBusy={moderatorBusy}
           users={userList}
           laps={laps}
           onBan={banUser}
@@ -1843,8 +1772,9 @@ function PendingUsersPanel({ pending, onApprove, onReject }) {
   );
 }
 
-function MembersPanel({ users, laps, onBan, onUnban }) {
+function MembersPanel({ users, laps, onBan, onUnban, session, onSetModerator, moderatorBusy }) {
   return (
+    <div><p className="moderator-note">{isAdmin(session)?'Appoint trusted members as moderators here. Mods can review laps, applications and reports, manage club content, and suspend ordinary members. Only admins can grant or remove moderator access.':'You can moderate laps, applications, reports and club content. Moderator access and staff accounts are managed by admins.'}</p>
     <div style={{ border: `1px solid ${C.border}`, overflow: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
         <thead>
@@ -1864,8 +1794,8 @@ function MembersPanel({ users, laps, onBan, onUnban }) {
               <Td>@{u.username}</Td>
               <Td>{u.nickname}</Td>
               <Td>
-                <span style={{ color: u.role === 'admin' ? C.accent : C.textDim, fontSize: 10, letterSpacing: 1.5 }}>
-                  {u.role === 'admin' ? '◆ ADMIN' : '◇ MEMBER'}
+                <span style={{ color: canModerate(u) ? C.accent : C.textDim, fontSize: 10, letterSpacing: 1.5 }}>
+                  {u.role==='system'?'IMPORT':roleLabel(u)}
                 </span>
               </Td>
               <Td>
@@ -1876,7 +1806,8 @@ function MembersPanel({ users, laps, onBan, onUnban }) {
               <Td>{laps.filter(l => l.submittedBy === u.username).length}</Td>
               <Td><span style={{ color: C.textFaint }}>{u.joinedAt ? new Date(u.joinedAt).toLocaleDateString() : '—'}</span></Td>
               <Td>
-                {u.role !== 'admin' && (
+                <div className="moderator-actions">{isAdmin(session)&&u.role==='member'&&(!u.banned||u.moderator)&&<button className="moderator-button" disabled={!!moderatorBusy} onClick={()=>onSetModerator(u.username,!u.moderator)}>{moderatorBusy===u.username?'Saving…':u.moderator?'Remove mod':'Make mod'}</button>}
+                {canSuspend(session,u) && (
                   u.banned
                     ? <button onClick={() => onUnban(u.username)} style={{
                         background: 'transparent', border: `1px solid ${C.green}`,
@@ -1887,13 +1818,13 @@ function MembersPanel({ users, laps, onBan, onUnban }) {
                         color: C.red, padding: '4px 10px', fontFamily: mono, fontSize: 10, letterSpacing: 1,
                         display: 'inline-flex', alignItems: 'center', gap: 4
                       }}><Ban size={10} /> BAN</button>
-                )}
+                )}</div>
               </Td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </div></div>
   );
 }
 
@@ -2422,7 +2353,7 @@ function Empty({ message }) {
       border: `1px dashed ${C.border}`, padding: 60, textAlign: 'center',
       fontFamily: mono, fontSize: 11, color: C.textFaint, letterSpacing: 2
     }}>
-      ◇ {message}
+      {message}
     </div>
   );
 }
@@ -2447,31 +2378,20 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
   },[laps,bestType]);
   const history=useMemo(()=>memberLapHistory(laps,session.username,{track:historyTrack,car:historyCar,type:historyType}),[laps,session.username,historyTrack,historyCar,historyType]);
   const historyCars=[...new Map(myLaps.map(l=>[normalizeLapLabel(l.car),l.car||'Unspecified vehicle'])).entries()];
-  const podiums = { p1: 0, p2: 0, p3: 0 };
-  personalBests.forEach(lap => {
-    const position=ranks.get(personalBestKey(lap))?.position;
-    if(position>=1&&position<=3)podiums['p'+position]++;
-  });
+  const layoutCount=new Set(myLaps.map(l=>l.track)).size;
+  const vehicleCount=new Set(myLaps.map(l=>normalizeLapLabel(l.car)).filter(Boolean)).size;
+  const trackDayCount=new Set(myLaps.map(l=>l.date).filter(Boolean)).size;
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontFamily: mono, fontSize: 10, color: C.textFaint, letterSpacing: 3, marginBottom: 4 }}>
-          // DRIVER PROFILE
-        </div>
-        <h1 style={{ margin: 0, fontFamily: mono, fontSize: 32, fontWeight: 700, color: C.text, letterSpacing: 1 }}>
-          {session.nickname}
-        </h1>
-        <div style={{ fontFamily: mono, fontSize: 12, color: C.textDim, marginTop: 4 }}>
-          @{session.username}
-        </div>
-      </div>
+      <ClubHero eyebrow="DRIVER PROFILE" title={session.nickname} description={`@${session.username}`} kind="helmet"/>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
-        <StatBlock label="TOTAL LAPS" value={myLaps.length} />
-        <StatBlock label="POLES" value={podiums.p1} accent />
-        <StatBlock label="P2 FINISHES" value={podiums.p2} />
-        <StatBlock label="P3 FINISHES" value={podiums.p3} />
+      <LapHistoryGraphic laps={myLaps} tracks={allTracks}/>
+      <div className="club-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
+        <StatBlock label="LOGGED LAPS" value={myLaps.length} />
+        <StatBlock label="CIRCUIT LAYOUTS" value={layoutCount} />
+        <StatBlock label="VEHICLES" value={vehicleCount} />
+        <StatBlock label="TRACK DAYS" value={trackDayCount} />
       </div>
 
       <div style={{ display: 'flex', flexWrap:'wrap', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
@@ -2498,7 +2418,7 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
 
       {tab === 'bests' && (
         personalBests.length === 0 ? (
-          <Empty message="NO APPROVED LAPS YET — HIT THE TRACK" />
+          <Empty message="NO APPROVED LAPS YET" />
         ) : (
           <div style={{ border: `1px solid ${C.border}`,overflowX:'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
@@ -2510,7 +2430,7 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
                   <Th>TIRE</Th>
                   <Th>DATE</Th>
                   <Th>TYPE</Th>
-                  <Th>POS</Th>
+                  <Th>BOARD RANK</Th>
                 </tr>
               </thead>
               <tbody>
@@ -2527,7 +2447,7 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
                       <Td>{lap.type==='optimal'?'OPT':'REAL'}</Td>
                       <Td>
                         <span style={{ color: idx === 1 ? C.accent : idx <= 3 ? C.text : C.textDim, fontWeight: idx === 1 ? 700 : 400 }}>
-                          P{idx} / {total}
+                          #{idx} of {total}
                         </span>
                       </Td>
                     </tr>
@@ -2666,7 +2586,7 @@ function SettingsPanel({ onChangePassword, hasPassword }) {
 
 function StatBlock({ label, value, accent }) {
   return (
-    <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 20 }}>
+    <div className="club-stat" style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 20 }}>
       <div style={{ fontFamily: mono, fontSize: 10, color: C.textDim, letterSpacing: 2, marginBottom: 8 }}>
         {label}
       </div>
