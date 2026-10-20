@@ -1,3 +1,5 @@
+@import './club-motion.css';
+
 :root {
   --font-club: "JetBrains Mono Variable", "JetBrains Mono", Menlo, Consolas, monospace;
   --page-base: #111214;
