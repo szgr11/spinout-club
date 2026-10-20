@@ -21,7 +21,7 @@
 .calendar-context>span{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 .calendar-context small{font-size:9px;color:#969a8f}
 .calendar-today-dot{width:6px;height:6px;display:inline-block;border-radius:0;background:var(--yellow);box-shadow:0 0 10px #ffd40050}
-.events-grid{overflow:hidden;animation:calendar-month-in .22s ease-out both}
+.events-grid{overflow:hidden;animation:calendar-month-in .18s ease-out both}
 .events-day{background:#1a1b1d}
 .events-day.is-past{background:repeating-linear-gradient(135deg,#ffffff02 0 1px,transparent 1px 8px);color:#7f8379}
 .day-number b{display:inline-grid;place-items:center;min-width:26px;height:26px;font-weight:500;border-radius:0}
@@ -43,7 +43,7 @@
 .calendar-tray-close{display:grid;place-items:center;flex-shrink:0;width:34px;height:34px;background:#2c2e2b;border:1px solid #56594b;color:#eee;border-radius:0}
 .calendar-tray-close:hover{border-color:#ffd400;color:#ffd400}
 @keyframes racing-line-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
-@keyframes calendar-month-in{from{opacity:.4;transform:translateX(calc(var(--month-direction,1)*12px))}to{opacity:1;transform:translateX(0)}}
+@keyframes calendar-month-in{from{transform:translateX(calc(var(--month-direction,1)*6px))}to{transform:translateX(0)}}
 @keyframes calendar-tray-in{from{transform:translateY(32px)}to{transform:translateY(0)}}
 @keyframes calendar-backdrop-in{from{opacity:0}to{opacity:1}}
 @media(max-width:1100px){.events-racing-line{max-width:200px}.events-heading{gap:16px}.events-tallies{gap:12px}.events-tally{padding-left:14px}}

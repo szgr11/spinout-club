@@ -830,10 +830,8 @@ function GlobalStyle() {
         background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.015) 2px, rgba(255,255,255,0.015) 3px);
       }
       @keyframes blink { 50% { opacity: 0; } }
-      @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
       .blink { animation: blink 1.2s infinite; }
       button { font-family: inherit; cursor: pointer; }
-      button:active { transform: translateY(1px); }
       button:disabled { opacity: 0.4; cursor: not-allowed; }
     `}</style>
   );
@@ -855,11 +853,11 @@ function BootScreen() {
 function Toast({ msg, kind }) {
   const colors = { info: C.text, success: C.green, error: C.red, warn: C.accent };
   return (
-    <div style={{
+    <div className="club-tab-panel" style={{
       position: 'fixed', top: 20, right: 20, zIndex: 1000,
       background: C.panel, border: `1px solid ${colors[kind] || C.border}`,
       padding: '12px 18px', fontFamily: mono, fontSize: 12,
-      color: colors[kind] || C.text, animation: 'slideIn 0.2s ease',
+      color: colors[kind] || C.text,
       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
       maxWidth: 380
     }}>
@@ -1058,7 +1056,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                 <Th></Th>
               </tr>
             </thead>
-            <tbody>
+            <tbody key={`${activeTrack}:${filterType}`} className="club-stack">
               {trackLaps.map((l, i) => {
                 const lead = trackLaps[0];
                 const gap = parseTime(l.time) - parseTime(lead.time);
@@ -1550,6 +1548,7 @@ function AdminView({
         ))}
       </div>
 
+      <div key={section} className="club-tab-panel">
       {section==='health'&&isAdmin(session)&&<OptionalFeature><Suspense fallback={<p role="status">Loading service health…</p>}><ServiceStatus/></Suspense></OptionalFeature>}
       {section === 'pending_laps' && (
         <PendingLapsPanel
@@ -1618,6 +1617,8 @@ function AdminView({
           onDelete={deleteBillboard}
         />
       )}
+
+      </div>
 
       {editingLap && (
         <EditLapModal
@@ -2413,6 +2414,7 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
         ))}
       </div>
 
+      <div key={tab} className="club-tab-panel">
       {tab==='garage'&&<OptionalFeature><Suspense fallback={<p role="status">Loading garage…</p>}><Garage key={session.username} username={session.username}/></Suspense></OptionalFeature>}
       {tab==='bests'&&<div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',marginBottom:16,fontFamily:mono,fontSize:11}}><span style={{color:C.textDim}}>PB per driver, vehicle &amp; circuit</span><label>Lap type <select aria-label="Personal best lap type" value={bestType} onChange={e=>setBestType(e.target.value)} style={{...inputStyle,width:'auto',marginLeft:8}}><option value="all">All</option><option value="real">Real</option><option value="optimal">Optimal</option></select></label></div>}
 
@@ -2510,6 +2512,7 @@ export function ProfileView({ session, laps, pendingLaps, users, allTracks, onCh
       {tab === 'settings' && (
         <SettingsPanel onChangePassword={onChangePassword} hasPassword={session.has_password} />
       )}
+      </div>
     </div>
   );
 }
