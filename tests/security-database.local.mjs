@@ -18,7 +18,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
  "create table laps(id text primary key,track text,driver text,time text,submitted_by text,date text,car text,hp integer,tire text,temp text,organizer text,type text);"+
  "create table pending_laps(id text primary key,track text,driver text,time text,image text,submitted_by text);"+
  "create table reports(id text primary key,lap_id text,reason text,reporter text);"+
- "create table tracks(id text primary key,name text,variant text,region text);create table billboards(id text primary key,title text);"+
+ "create table tracks(id text primary key,name text,variant text,region text,added_by text,created_at bigint);create table billboards(id text primary key,title text);"+
  "create table app_kv(key text primary key,value jsonb);"+
  "insert into profiles values('admin','dummy-admin-password','Admin','admin',false,1),('member','dummy-member-password','Member','member',false,1),('banned','dummy-banned-password','Banned','member',true,1),('legacy_import','dummy-system-password','Import','system',false,1);"+
  "insert into pending_users values('legacy_applicant','dummy-pending-password','Applicant','Track days',1);"+
@@ -33,6 +33,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
   await db.exec(await readFile(new URL('../supabase/migrations/20261019182803_member_event_plans_and_garage.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261020063347_moderator_permissions.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261021060415_track_layouts_mod_inbox.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261021062909_visual_track_catalog.sql',import.meta.url),'utf8'));
   const scalar=async q=>(await db.query(q)).rows[0];
   const as=async(role,uid='')=>db.exec("reset role;set role "+role+";set request.jwt.claim.sub='"+uid+"';");
   await db.exec("update profiles set auth_user_id='"+ADMIN+"' where username='admin';update profiles set auth_user_id='"+MEMBER+"' where username='member';update profiles set auth_user_id='"+BANNED+"' where username='banned';");
@@ -85,6 +86,38 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
    await assert.rejects(db.query("select spinout_set_mod_thread_status('"+id+"','open')"),/Moderator required/);
    await as('postgres');await db.exec("delete from mod_replies;delete from mod_threads;delete from profiles where username='second'");
   });
+  await t.test('staff catalog editor renames, adds, hides and archives layouts without changing lap history',async()=>{
+   const rpc=payload=>db.query("select spinout_save_track_layout($1::jsonb) data",[JSON.stringify(payload)]);
+   await as('anon');await assert.rejects(rpc({}),/permission denied/);
+   await as('authenticated',MEMBER);await assert.rejects(rpc({name:'Forged',variant:'Full',region:'SoCal'}),/Moderator required/);
+   await assert.rejects(db.query("update tracks set name='Forged' where id='sow_cw'"),/permission denied/);
+   await as('authenticated',ADMIN);
+   const before=(await scalar("select track from laps where id='lap1'")).track;
+   const original=(await scalar("select to_jsonb(t) data from tracks t where id='sow_cw'")).data;
+   await rpc({...original,name:'Renamed Streets',active:false,hidden:true});
+   assert.equal((await scalar("select count(*) n from tracks where circuit_id='streets_of_willow' and name='Renamed Streets'")).n,2);
+   assert.deepEqual((await db.query("select active,hidden from tracks where id='sow_cw'")).rows,[{active:false,hidden:true}]);
+   assert.equal((await scalar("select track from laps where id='lap1'")).track,before);
+   await as('authenticated',MEMBER);
+   await assert.rejects(db.query("insert into pending_laps(id,track,driver,time,submitted_by) values('archived','sow_cw','Member','1:30.000','member')"),/row-level security/);
+   await as('authenticated',ADMIN);await rpc({...original,active:true,hidden:true});
+   await as('authenticated',MEMBER);
+   await assert.rejects(db.query("insert into pending_laps(id,track,driver,time,submitted_by) values('hidden','sow_cw','Member','1:30.000','member')"),/row-level security/);
+   await as('authenticated',ADMIN);await rpc({...original,active:false,hidden:true});
+   const added=(await rpc({circuit_id:'streets_of_willow',name:'Renamed Streets',region:'SoCal',variant:'Verified short layout'})).rows[0].data;
+   assert.ok(added.id.startsWith('layout_'));assert.equal(added.circuit_id,'streets_of_willow');
+   await assert.rejects(rpc({...added,circuit_id:'elsewhere'}),/keep their circuit identity/);
+   await assert.rejects(rpc({...added,id:null}),/already exists/);
+   await assert.rejects(rpc({...added,map_path:'M1 2L3 4Z'}),/Credit a source/);
+   await assert.rejects(rpc({...added,map_path:'<svg onload=alert(1)>',map_source:'https://example.com'}),/Invalid map outline/);
+   await assert.rejects(rpc({...added,map_path:'M1 2L3 4Z',map_source:'javascript:alert(1)'}),/HTTPS/);
+   await rpc({...added,map_path:'M100 100L800 100L800 800Z',map_source:'https://example.com/credited-map',map_scope:'layout'});
+   await as('anon');
+   assert.equal((await scalar("select hidden from leaderboard_tracks where id='sow_cw'")).hidden,true);
+   assert.equal((await scalar("select track from leaderboard_laps where id='lap1'")).track,'sow_cw');
+   await as('authenticated',ADMIN);await rpc({...original,active:true,hidden:false});
+   await as('postgres');await db.query("delete from tracks where id=$1",[added.id]);
+  });
   await t.test('plaintext removed and bcrypt credentials verify',async()=>{
    assert.equal((await scalar("select count(*) n from profiles where password <> '[secured]'")).n,0);
    assert.equal((await scalar("select count(*) n from pending_users where password <> '[secured]'")).n,0);
@@ -117,7 +150,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
   });
   await t.test('member ownership is enforced on submissions and approved data',async()=>{
    await as('authenticated',MEMBER);assert.equal((await scalar('select count(*) n from laps')).n,1);
-   await db.exec("insert into pending_laps(id,driver,time,submitted_by) values('mine','Member','1:30.000','member')");
+   await db.exec("insert into pending_laps(id,track,driver,time,submitted_by) values('mine','sow_cw','Member','1:30.000','member')");
    await assert.rejects(db.query("insert into pending_laps(id,driver,time,submitted_by) values('forged','Admin','1:20.000','admin')"),/row-level security/);
    assert.equal((await db.query("update profiles set role='admin' where username='member' returning username")).rows.length,0);
    await assert.rejects(db.query("insert into laps(id,track,driver,time,submitted_by,date) values('unauthorized','sow_cw','Member','1:00.000','member','2026-10-16')"),/row-level security/);
@@ -208,8 +241,9 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
    await db.query("update laps set time='1:24.000' where id='mod-approved'");
    assert.equal((await scalar("select time from laps where id='mod-approved'")).time,'1:24.000');
    await db.query("delete from laps where id='mod-approved'");
-   await db.query("insert into tracks(id,name) values('mod-track','Custom circuit')");
-   await db.query("delete from tracks where id='mod-track'");
+   const track=(await scalar(`select spinout_save_track_layout('{"name":"Custom circuit","variant":"Full course","region":"SoCal"}') data`)).data;
+   assert.equal(track.name,'Custom circuit');
+   await assert.rejects(db.query("delete from tracks where id='"+track.id+"'"),/permission denied/);
    await db.query("insert into billboards(id,title) values('mod-notice','Club notice')");
    await db.query("delete from billboards where id='mod-notice'");
    await db.query("delete from pending_laps where id='mine'");
@@ -238,6 +272,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
    assert.equal((await scalar("select spinout_account()->>'moderator' enabled")).enabled,'false');
    await assert.rejects(db.query("insert into laps(id) values('revoked-mod')"),/row-level security/);
    await assert.rejects(db.query("select spinout_approve_user('mod_applicant')"),/Admin or moderator required/);
+   await assert.rejects(db.query(`select spinout_save_track_layout('{"name":"Unauthorized","variant":"CW","region":"SoCal"}')`),/Moderator required/);
    await assert.rejects(db.query("select spinout_set_suspended('member',true)"),/Moderator required/);
    await as('anon');
    for(const q of ["select spinout_set_moderator('member',true)","select spinout_set_suspended('member',true)","select spinout_approve_user('mod_applicant')"]) await assert.rejects(db.query(q),/permission denied/);

@@ -1,9 +1,10 @@
+import {deduplicateLaps} from './laps.js';
 // IDs identify exact configurations. Never rewrite old lap.track values.
 // Primary references: https://buttonwillowraceway.com/track-info/track-maps/
 // https://www.thunderhill.com/track-info/track-maps
 // https://www.ongridtrack.com/thunderhill-raceway (operator's direction / bypass guides)
 const track=(id,name,variant,region)=>({id,name,variant,region});
-export const BUILTIN_TRACKS = [
+const ORIGINAL_TRACKS = [
  track('sow_cw','Streets of Willow','CW','SoCal'),
  track('sow_ccw','Streets of Willow','CCW','SoCal'),
  track('big_willow','Big Willow','CW','SoCal'),
@@ -28,13 +29,25 @@ export const BUILTIN_TRACKS = [
  track('lvms','Las Vegas Motor Speedway','CW','NV'),
  track('tsukuba','Tsukuba','Layout unspecified','JP'),
 ];
-export const circuitKey=t=>`${t.region}\u0000${t.name.trim().toLowerCase()}`;
+export function defaultCircuitId(id=''){
+ if(id.startsWith('sow_'))return 'streets_of_willow';
+ if(id.startsWith('btn_'))return 'buttonwillow';
+ if(id.startsWith('chuck_'))return 'chuckwalla';
+ if(id.startsWith('thunder'))return 'thunderhill';
+ return id==='spring_mtn'?'spring_mountain':id;
+}
+const officialNames={streets_of_willow:'Streets of Willow Springs',big_willow:'Big Willow',buttonwillow:'Buttonwillow Raceway Park',chuckwalla:'Chuckwalla Valley Raceway',laguna:'WeatherTech Raceway Laguna Seca',thunderhill:'Thunderhill Raceway Park',spring_mountain:'Spring Mountain Motor Resort',tsukuba:'Tsukuba Circuit'};
+export const BUILTIN_TRACKS=ORIGINAL_TRACKS.map(t=>{const circuit_id=defaultCircuitId(t.id);return {...t,name:officialNames[circuit_id]||t.name,circuit_id,active:true};});
+export const circuitKey=t=>t.circuit_id||`${t.region}\u0000${t.name.trim().toLowerCase()}`;
 export function groupTracks(tracks){
  const groups=new Map();
  for(const t of tracks){const key=circuitKey(t);if(!groups.has(key))groups.set(key,{key,name:t.name,region:t.region,layouts:[]});groups.get(key).layouts.push(t);}
  return [...groups.values()];
 }
-export function mergeTracks(custom=[]){
- const ids=new Set();return [...BUILTIN_TRACKS,...custom].filter(t=>{if(ids.has(t.id))return false;ids.add(t.id);return true;});
+export function mergeTracks(saved=[]){
+ const values=new Map(BUILTIN_TRACKS.map(t=>[t.id,t]));
+ for(const t of saved)values.set(t.id,{...values.get(t.id),...t});
+ return [...values.values()];
 }
+export function layoutCounts(laps=[]){return deduplicateLaps(laps).reduce((r,l)=>{r[l.track]=(r[l.track]||0)+1;return r;},{});}
 export const layoutLabel=t=>!t?.variant||t.variant==='—'?'Layout unspecified':t.variant;
