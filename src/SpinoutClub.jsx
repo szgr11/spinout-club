@@ -1,6 +1,9 @@
 import { supabase, publicSupabase } from './supabase'
 import { CLUB_FONT } from './typography.js';
 import Header from './ClubHeader.jsx';
+import {BUILTIN_TRACKS,mergeTracks} from './tracks.js';
+import TrackLayoutFields from './TrackLayoutFields.jsx';
+import {ModInbox,useModOpenCount} from './ModMessages.jsx';
 import LapHistoryGraphic from './LapHistoryGraphic.jsx';
 import {ClubHero} from './ClubArtwork.jsx';
 import {isAdmin,canModerate,canSuspend,roleLabel} from './permissions.js';
@@ -12,26 +15,6 @@ import {applyGarageSpecs} from './event-tools.js';
 const Garage=lazy(()=>import('./Garage.jsx'));
 const ServiceStatus=lazy(()=>import('./ServiceStatus.jsx'));
 import { Trophy, Clock, User, LogOut, Plus, Check, X, Shield, Flag, Thermometer, Calendar, Zap, ChevronRight, AlertCircle, Edit2, Ban, MapPin, Megaphone, Lock, Settings, Pin } from 'lucide-react';
-
-// ============ BUILT-IN TRACK DEFINITIONS ============
-// Admin can add custom tracks via the Control panel — they merge into this list.
-const BUILTIN_TRACKS = [
-  { id: 'sow_cw', name: 'Streets of Willow', variant: 'CW', region: 'SoCal' },
-  { id: 'sow_ccw', name: 'Streets of Willow', variant: 'CCW', region: 'SoCal' },
-  { id: 'big_willow', name: 'Big Willow', variant: 'CW', region: 'SoCal' },
-  { id: 'btn_cw13', name: 'Buttonwillow', variant: 'CW13', region: 'SoCal' },
-  { id: 'btn_ccw13', name: 'Buttonwillow', variant: 'CCW13', region: 'SoCal' },
-  { id: 'btn_circuit', name: 'Buttonwillow', variant: 'The Circuit', region: 'SoCal' },
-  { id: 'btn_cw1', name: 'Buttonwillow', variant: 'CW1', region: 'SoCal' },
-  { id: 'chuck_cw', name: 'Chuckwalla', variant: 'CW', region: 'SoCal' },
-  { id: 'chuck_ccw', name: 'Chuckwalla', variant: 'CCW', region: 'SoCal' },
-  { id: 'laguna', name: 'Laguna Seca', variant: '—', region: 'NorCal' },
-  { id: 'sonoma', name: 'Sonoma Raceway', variant: '—', region: 'NorCal' },
-  { id: 'thunder', name: 'Thunderhill', variant: '5mi', region: 'NorCal' },
-  { id: 'spring_mtn', name: 'Spring Mountain', variant: '—', region: 'NV' },
-  { id: 'lvms', name: 'Las Vegas Motor Speedway', variant: 'CW', region: 'NV' },
-  { id: 'tsukuba', name: 'Tsukuba', variant: '—', region: 'JP' },
-];
 
 // ============ SEED DATA from existing spreadsheet ============
 const SEED_LAPS = [];
@@ -157,8 +140,10 @@ export default function App({ publicView = false }) {
   const [toast, setToast] = useState(null);
   const [moderatorBusy,setModeratorBusy]=useState('');
 
+  const openMessages=useModOpenCount(session);
+
   // Merged track list, used everywhere
-  const allTracks = useMemo(() => [...BUILTIN_TRACKS, ...customTracks], [customTracks]);
+  const allTracks = useMemo(() => mergeTracks(customTracks), [customTracks]);
 
   // Supabase verifies signed sessions. Retired browser-only sessions are discarded.
   useEffect(() => {
@@ -626,6 +611,7 @@ export default function App({ publicView = false }) {
   // ----- TRACK MGMT -----
   const addTrack = async ({ name, variant, region }) => {
     if (!name || !region) { showToast('Name and region required', 'error'); return; }
+    if(allTracks.some(t=>t.name.trim().toLowerCase()===name.trim().toLowerCase() && String(t.variant||'—').trim().toLowerCase()===(variant||'—').trim().toLowerCase())){showToast('This track layout already exists','warn');return;}
     const id = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${(variant || 'main').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now().toString(36).slice(-4)}`;
     const row = {
       id,
@@ -743,7 +729,7 @@ export default function App({ publicView = false }) {
       ) : (
         <>
           <Header session={session} onLogout={handleLogout} view={view} setView={setView}
-            pendingCount={Object.keys(pending).length + pendingLaps.length + reports.length}
+            pendingCount={Object.keys(pending).length + pendingLaps.length + reports.length + openMessages}
           />
           <main className="club-main" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px' }}>
             {view === 'leaderboards' && (
@@ -770,6 +756,7 @@ export default function App({ publicView = false }) {
             {view === 'admin' && canModerate(session) && (
               <AdminView
                 session={session}
+                openMessages={openMessages}
                 setModerator={setModerator}
                 moderatorBusy={moderatorBusy}
                 pending={pending}
@@ -901,7 +888,6 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
   const trackLaps = useMemo(() => selectPersonalBests(laps,{track:activeTrack,type:filterType}), [laps, activeTrack, filterType]);
 
   const trackInfo = allTracks.find(t => t.id === activeTrack) || allTracks[0];
-  const regions = [...new Set(allTracks.map(t => t.region))];
 
   return (
     <div>
@@ -947,50 +933,8 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
         </div>
       )}
 
-      {/* Track selector */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontFamily: mono, fontSize: 10, color: C.textDim, letterSpacing: 2, marginBottom: 12 }}>
-          // SELECT CIRCUIT
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {regions.map(region => (
-            <div key={region}>
-              <div style={{ fontFamily: mono, fontSize: 9, color: C.textFaint, letterSpacing: 3, marginBottom: 8 }}>
-                {region.toUpperCase()}
-              </div>
-              <div className="club-circuit-options" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {allTracks.filter(t => t.region === region).map(t => {
-                  const active = t.id === activeTrack;
-                  const count = laps.filter(l => l.track === t.id).length;
-                  return (
-                    <button key={t.id} onClick={() => setActiveTrack(t.id)} style={{
-                      background: active ? C.accent : C.panel,
-                      color: active ? C.bg : C.text,
-                      border: `1px solid ${active ? C.accent : C.border}`,
-                      padding: '8px 12px', fontFamily: mono, fontSize: 11,
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      transition: 'all 0.15s'
-                    }}>
-                      <span>{t.name}</span>
-                      <span style={{ fontSize: 9, color: active ? C.bg : C.textFaint, letterSpacing: 1 }}>
-                        {t.variant}
-                      </span>
-                      {count > 0 && (
-                        <span style={{
-                          background: active ? 'rgba(0,0,0,0.2)' : C.borderLight,
-                          color: active ? C.bg : C.textDim,
-                          padding: '1px 6px', fontSize: 9, marginLeft: 4
-                        }}>
-                          {count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="board-track-layout" style={{marginBottom:28}}>
+        <TrackLayoutFields tracks={allTracks} value={activeTrack} onChange={setActiveTrack} style={inputStyle}/>
       </div>
 
       <div className="scanline club-board-heading" style={{
@@ -1371,15 +1315,7 @@ export function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
           <div style={{ fontFamily: mono, fontSize: 11, color: C.accent, letterSpacing: 2, marginBottom: 16 }}>
             ▸ CIRCUIT & TIME
           </div>
-          <Field label="TRACK + DIRECTION">
-            <select value={form.track} onChange={e => setF('track', e.target.value)} style={inputStyle}>
-              {allTracks.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name} — {t.variant} ({t.region})
-                </option>
-              ))}
-            </select>
-          </Field>
+          <TrackLayoutFields tracks={allTracks} value={form.track} onChange={v=>setF('track',v)} style={inputStyle}/>
           <Field label="LAP TIME" hint="format: M:SS.xx (e.g. 1:18.67)">
             <input value={form.time} onChange={e => setF('time', e.target.value)}
               placeholder="1:23.45"
@@ -1500,7 +1436,7 @@ export function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
 // ============ ADMIN VIEW ============
 
 function AdminView({
-  session, setModerator, moderatorBusy,
+  session, setModerator, moderatorBusy, openMessages=0,
   pending, pendingLaps,
   approveUser, rejectUser, banUser, unbanUser,
   approvePendingLap, rejectPendingLap,
@@ -1519,6 +1455,7 @@ function AdminView({
   const sections = [
     { id: 'pending_laps', label: `LAP APPROVALS`, count: pendingLaps.length, hot: pendingLaps.length > 0 },
     { id: 'pending_users', label: `MEMBER APPLICATIONS`, count: pendingUserList.length, hot: pendingUserList.length > 0 },
+    { id: 'messages', label: 'MOD INBOX', count: openMessages, hot: openMessages>0 },
     { id: 'reports', label: `REPORTS`, count: reports.length, hot: reports.length > 0 },
     { id: 'members', label: `MEMBERS`, count: userList.length },
     { id: 'laps', label: `ALL LAPS`, count: laps.length },
@@ -1529,7 +1466,7 @@ function AdminView({
 
   return (
     <div>
-      <ClubHero eyebrow="THE SPINOUT CLUB // CLUB CONTROL" title={isAdmin(session)?'Admin dashboard':'Moderator dashboard'} aside={<div className="control-summary"><span>Awaiting review</span><strong>{pendingLaps.length+Object.keys(pending).length+reports.length}</strong><small>Laps · applications · reports</small></div>}/>
+      <ClubHero eyebrow="THE SPINOUT CLUB // CLUB CONTROL" title={isAdmin(session)?'Admin dashboard':'Moderator dashboard'} aside={<div className="control-summary"><span>Awaiting review</span><strong>{pendingLaps.length+Object.keys(pending).length+reports.length+openMessages}</strong><small>Laps · applications · reports · messages</small></div>}/>
 
       <div className="club-tabs" style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
         {sections.map(s => (
@@ -1551,6 +1488,7 @@ function AdminView({
       </div>
 
       <div key={section} className="club-tab-panel">
+      {section==='messages'&&<OptionalFeature><ModInbox account={session}/></OptionalFeature>}
       {section==='health'&&isAdmin(session)&&<OptionalFeature><Suspense fallback={<p role="status">Loading service health…</p>}><ServiceStatus/></Suspense></OptionalFeature>}
       {section === 'pending_laps' && (
         <PendingLapsPanel
@@ -2151,11 +2089,7 @@ function EditLapModal({ lap, allTracks, onClose, onSave }) {
         <div className="club-edit-grid" style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <Field label="DRIVER"><input value={form.driver || ''} onChange={e => setF('driver', e.target.value)} style={inputStyle} /></Field>
           <Field label="TIME (M:SS.xx)"><input value={form.time || ''} onChange={e => setF('time', e.target.value)} style={inputStyle} /></Field>
-          <Field label="TRACK">
-            <select value={form.track} onChange={e => setF('track', e.target.value)} style={inputStyle}>
-              {allTracks.map(t => <option key={t.id} value={t.id}>{t.name} — {t.variant}</option>)}
-            </select>
-          </Field>
+          <TrackLayoutFields tracks={allTracks} value={form.track} onChange={v=>setF('track',v)} style={inputStyle}/>
           <Field label="TYPE">
             <select value={form.type} onChange={e => setF('type', e.target.value)} style={inputStyle}>
               <option value="real">REAL LAP</option>
@@ -2203,12 +2137,12 @@ function TracksPanel({ allTracks, customTracks, laps, onAdd, onDelete }) {
       <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 20, height: 'fit-content' }}>
         <div style={{ fontFamily: mono, fontSize: 11, color: C.accent, letterSpacing: 2, marginBottom: 16,
           display: 'flex', alignItems: 'center', gap: 6 }}>
-          <MapPin size={12} strokeWidth={2.5} /> ▸ ADD NEW TRACK
+          <MapPin size={12} strokeWidth={2.5} /> ▸ ADD TRACK / LAYOUT
         </div>
         <Field label="TRACK NAME">
           <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Willow Springs" style={inputStyle} />
         </Field>
-        <Field label="VARIANT / DIRECTION" hint="optional — e.g. CW, CCW, Short Course">
+        <Field label="LAYOUT" hint="e.g. Classic #13 · CW, East · Bypass · CCW">
           <input value={variant} onChange={e => setVariant(e.target.value)} placeholder="—" style={inputStyle} />
         </Field>
         <Field label="REGION">
@@ -2219,7 +2153,7 @@ function TracksPanel({ allTracks, customTracks, laps, onAdd, onDelete }) {
           fontFamily: mono, fontSize: 11, letterSpacing: 2, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
         }}>
-          <Plus size={12} strokeWidth={3} /> ADD TRACK
+          <Plus size={12} strokeWidth={3} /> ADD LAYOUT
         </button>
       </div>
 
@@ -2228,7 +2162,7 @@ function TracksPanel({ allTracks, customTracks, laps, onAdd, onDelete }) {
           <thead>
             <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
               <Th>TRACK</Th>
-              <Th>VARIANT</Th>
+              <Th>LAYOUT</Th>
               <Th>REGION</Th>
               <Th>LAPS</Th>
               <Th>SOURCE</Th>
