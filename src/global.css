@@ -47,3 +47,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .events-page :is(button,input,select,textarea,article,section,dialog),
 .club-header :is(button,a) { border-radius:0; }
 html { scrollbar-gutter:stable; }
+
+.track-layout-fields {display:grid;grid-template-columns:1fr 1fr;gap:14px;min-width:0;margin-bottom:16px}
+.track-layout-fields label {display:flex;flex-direction:column;gap:7px;min-width:0;font-size:10px;letter-spacing:2px;color:#a7aaa3}
+.track-layout-fields select {min-width:0;width:100%;letter-spacing:0}
+@media(max-width:600px){.track-layout-fields{grid-template-columns:1fr;gap:12px}}
