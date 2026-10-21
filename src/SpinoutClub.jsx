@@ -1,7 +1,7 @@
 import { supabase, publicSupabase } from './supabase'
 import { CLUB_FONT } from './typography.js';
 import Header from './ClubHeader.jsx';
-import {BUILTIN_TRACKS,mergeTracks} from './tracks.js';
+import {mergeTracks} from './tracks.js';
 import TrackLayoutFields from './TrackLayoutFields.jsx';
 import {ModInbox,useModOpenCount} from './ModMessages.jsx';
 import LapHistoryGraphic from './LapHistoryGraphic.jsx';
@@ -12,6 +12,7 @@ import { SecureAuth, GoogleButton } from './SecureAuth.jsx';
 import React, { lazy, Suspense, useState, useEffect, useMemo } from 'react';
 import OptionalFeature from './OptionalFeature.jsx';
 import {applyGarageSpecs} from './event-tools.js';
+const TrackEditor=lazy(()=>import('./TrackEditor.jsx'));
 const Garage=lazy(()=>import('./Garage.jsx'));
 const ServiceStatus=lazy(()=>import('./ServiceStatus.jsx'));
 import { Trophy, Clock, User, LogOut, Plus, Check, X, Shield, Flag, Thermometer, Calendar, Zap, ChevronRight, AlertCircle, Edit2, Ban, MapPin, Megaphone, Lock, Settings, Pin } from 'lucide-react';
@@ -205,7 +206,7 @@ export default function App({ publicView = false }) {
       supabase.from('pending_laps').select('id,track,driver,time,car,hp,tire,temp,date,organizer,type,image,submitted_by,submitted_at'),
       supabase.from('profiles').select('username,nickname,role,moderator,banned,joined_at'),
       supabase.from('pending_users').select('username,nickname,reason,submitted_at'),
-      supabase.from('tracks').select('id,name,variant,region,added_by,created_at'),
+      supabase.from('tracks').select('*'),
       supabase.from('billboards').select('id,title,body,pinned,posted_by,posted_at'),
       supabase.from('reports').select('id,lap_id,reason,reporter,reported_at')
     ]);
@@ -265,14 +266,7 @@ export default function App({ publicView = false }) {
     });
     setPending(pendingData);
 
-    setCustomTracks((tracksRes.data || []).map(t => ({
-      id: t.id,
-      name: t.name,
-      variant: t.variant,
-      region: t.region,
-      addedBy: t.added_by,
-      createdAt: t.created_at
-    })));
+    setCustomTracks(tracksRes.data||[]);
 
     setBillboards((billboardsRes.data || []).filter(b => b.title !== 'Duplicate lap time entry noted').map(b => ({
       id: b.id,
@@ -608,57 +602,6 @@ export default function App({ publicView = false }) {
   };
 
 
-  // ----- TRACK MGMT -----
-  const addTrack = async ({ name, variant, region }) => {
-    if (!name || !region) { showToast('Name and region required', 'error'); return; }
-    if(allTracks.some(t=>t.name.trim().toLowerCase()===name.trim().toLowerCase() && String(t.variant||'—').trim().toLowerCase()===(variant||'—').trim().toLowerCase())){showToast('This track layout already exists','warn');return;}
-    const id = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${(variant || 'main').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now().toString(36).slice(-4)}`;
-    const row = {
-      id,
-      name,
-      variant: variant || '—',
-      region,
-      added_by: session.username,
-      created_at: Date.now()
-    };
-
-    const { error } = await supabase.from('tracks').insert(row);
-    if (error) {
-      console.error('add track error', error);
-      showToast('Could not add track', 'error');
-      return;
-    }
-
-    setCustomTracks(prev => [...prev, {
-      id: row.id,
-      name: row.name,
-      variant: row.variant,
-      region: row.region,
-      addedBy: row.added_by,
-      createdAt: row.created_at
-    }]);
-    showToast(`Added ${name} ${variant || ''}`, 'success');
-  };
-
-
-  const deleteTrack = async (id) => {
-    if (BUILTIN_TRACKS.find(t => t.id === id)) {
-      showToast('Cannot delete built-in tracks', 'error');
-      return;
-    }
-
-    const { error } = await supabase.from('tracks').delete().eq('id', id);
-    if (error) {
-      console.error('delete track error', error);
-      showToast('Could not remove track', 'error');
-      return;
-    }
-
-    setCustomTracks(prev => prev.filter(t => t.id !== id));
-    showToast('Track removed', 'info');
-  };
-
-
   // ----- BILLBOARD MGMT -----
   const postBillboard = async ({ title, body, pinned }) => {
     if (!title || !body) { showToast('Title and body required', 'error'); return; }
@@ -748,6 +691,7 @@ export default function App({ publicView = false }) {
             {view === 'submit' && session && (
               <SubmitView
                 onSubmit={submitLap}
+                laps={laps}
                 initialTrack={activeTrack}
                 session={session}
                 allTracks={allTracks}
@@ -773,8 +717,7 @@ export default function App({ publicView = false }) {
                 editLap={editLap}
                 allTracks={allTracks}
                 customTracks={customTracks}
-                addTrack={addTrack}
-                deleteTrack={deleteTrack}
+                refreshTracks={refreshData}
                 billboards={billboards}
                 postBillboard={postBillboard}
                 deleteBillboard={deleteBillboard}
@@ -887,7 +830,10 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
   const [reportTarget, setReportTarget] = useState(null); // lap object
   const trackLaps = useMemo(() => selectPersonalBests(laps,{track:activeTrack,type:filterType}), [laps, activeTrack, filterType]);
 
+  useEffect(()=>{if(allTracks.find(t=>t.id===activeTrack)?.hidden){const first=allTracks.find(t=>!t.hidden);if(first)setActiveTrack(first.id);}},[allTracks,activeTrack]);
   const trackInfo = allTracks.find(t => t.id === activeTrack) || allTracks[0];
+
+  if(!allTracks.some(t=>!t.hidden))return <p>No circuits are currently listed.</p>;
 
   return (
     <div>
@@ -934,7 +880,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
       )}
 
       <div className="board-track-layout" style={{marginBottom:28}}>
-        <TrackLayoutFields tracks={allTracks} value={activeTrack} onChange={setActiveTrack} style={inputStyle}/>
+        <TrackLayoutFields tracks={allTracks} laps={laps} allowArchived value={activeTrack} onChange={setActiveTrack} style={inputStyle}/>
       </div>
 
       <div className="scanline club-board-heading" style={{
@@ -1243,9 +1189,9 @@ function Stat({ label, value, accent }) {
 
 // ============ SUBMIT VIEW ============
 
-export function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
+export function SubmitView({ onSubmit, initialTrack, session, allTracks, laps=[] }) {
   const [form, setForm] = useState({
-    track: initialTrack,
+    track: allTracks.find(t=>t.id===initialTrack&&t.active!==false&&!t.hidden)?.id||allTracks.find(t=>t.active!==false&&!t.hidden)?.id||'',
     driver: session.nickname,
     car: '',
     hp: '',
@@ -1282,6 +1228,7 @@ export function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
   };
 
   const submit = () => {
+    if(!allTracks.some(t=>t.id===form.track&&t.active!==false&&!t.hidden)){setError('Choose an available layout for this submission.');return;}
     if (!validateTimeFormat(form.time)) {
       setError('Time format must be M:SS.xx — e.g. 1:18.67 or 1:18.674');
       return;
@@ -1315,7 +1262,7 @@ export function SubmitView({ onSubmit, initialTrack, session, allTracks }) {
           <div style={{ fontFamily: mono, fontSize: 11, color: C.accent, letterSpacing: 2, marginBottom: 16 }}>
             ▸ CIRCUIT & TIME
           </div>
-          <TrackLayoutFields tracks={allTracks} value={form.track} onChange={v=>setF('track',v)} style={inputStyle}/>
+          <TrackLayoutFields tracks={allTracks} laps={laps} value={form.track} onChange={v=>setF('track',v)} style={inputStyle}/>
           <Field label="LAP TIME" hint="format: M:SS.xx (e.g. 1:18.67)">
             <input value={form.time} onChange={e => setF('time', e.target.value)}
               placeholder="1:23.45"
@@ -1441,7 +1388,7 @@ function AdminView({
   approveUser, rejectUser, banUser, unbanUser,
   approvePendingLap, rejectPendingLap,
   users, laps, deleteLap, editLap,
-  allTracks, customTracks, addTrack, deleteTrack,
+  allTracks, customTracks, refreshTracks,
   billboards, postBillboard, deleteBillboard,
   reports, resolveReportRemoveLap, dismissReport
 }) {
@@ -1540,15 +1487,7 @@ function AdminView({
         />
       )}
 
-      {section === 'tracks' && (
-        <TracksPanel
-          allTracks={allTracks}
-          customTracks={customTracks}
-          laps={laps}
-          onAdd={addTrack}
-          onDelete={deleteTrack}
-        />
-      )}
+      {section==='tracks'&&<OptionalFeature><Suspense fallback={<p role="status">Loading track editor…</p>}><TrackEditor tracks={allTracks} laps={laps} account={session} onSaved={refreshTracks}/></Suspense></OptionalFeature>}
 
       {section === 'billboards' && (
         <BillboardsPanel
@@ -1562,6 +1501,7 @@ function AdminView({
 
       {editingLap && (
         <EditLapModal
+          laps={laps}
           lap={editingLap}
           allTracks={allTracks}
           onClose={() => setEditingLap(null)}
@@ -2060,7 +2000,7 @@ function HistoryModal({ lap, allTracks, onClose }) {
   );
 }
 
-function EditLapModal({ lap, allTracks, onClose, onSave }) {
+function EditLapModal({ lap, allTracks, laps=[], onClose, onSave }) {
   const [form, setForm] = useState({ ...lap });
   const setF = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
@@ -2089,7 +2029,7 @@ function EditLapModal({ lap, allTracks, onClose, onSave }) {
         <div className="club-edit-grid" style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <Field label="DRIVER"><input value={form.driver || ''} onChange={e => setF('driver', e.target.value)} style={inputStyle} /></Field>
           <Field label="TIME (M:SS.xx)"><input value={form.time || ''} onChange={e => setF('time', e.target.value)} style={inputStyle} /></Field>
-          <TrackLayoutFields tracks={allTracks} value={form.track} onChange={v=>setF('track',v)} style={inputStyle}/>
+          <TrackLayoutFields tracks={allTracks} laps={laps} allowArchived allowHidden value={form.track} onChange={v=>setF('track',v)} style={inputStyle}/>
           <Field label="TYPE">
             <select value={form.type} onChange={e => setF('type', e.target.value)} style={inputStyle}>
               <option value="real">REAL LAP</option>
@@ -2114,89 +2054,6 @@ function EditLapModal({ lap, allTracks, onClose, onSave }) {
             fontFamily: mono, fontSize: 11, letterSpacing: 1.5, fontWeight: 700
           }}>SAVE CHANGES</button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function TracksPanel({ allTracks, customTracks, laps, onAdd, onDelete }) {
-  const [name, setName] = useState('');
-  const [variant, setVariant] = useState('');
-  const [region, setRegion] = useState('SoCal');
-
-  const submit = () => {
-    if (!name.trim() || !region.trim()) return;
-    onAdd({ name: name.trim(), variant: variant.trim(), region: region.trim() });
-    setName(''); setVariant('');
-  };
-
-  const customIds = new Set(customTracks.map(t => t.id));
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20 }}>
-      <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 20, height: 'fit-content' }}>
-        <div style={{ fontFamily: mono, fontSize: 11, color: C.accent, letterSpacing: 2, marginBottom: 16,
-          display: 'flex', alignItems: 'center', gap: 6 }}>
-          <MapPin size={12} strokeWidth={2.5} /> ▸ ADD TRACK / LAYOUT
-        </div>
-        <Field label="TRACK NAME">
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Willow Springs" style={inputStyle} />
-        </Field>
-        <Field label="LAYOUT" hint="e.g. Classic #13 · CW, East · Bypass · CCW">
-          <input value={variant} onChange={e => setVariant(e.target.value)} placeholder="—" style={inputStyle} />
-        </Field>
-        <Field label="REGION">
-          <input value={region} onChange={e => setRegion(e.target.value)} placeholder="SoCal" style={inputStyle} />
-        </Field>
-        <button onClick={submit} style={{
-          width: '100%', padding: '12px', background: C.accent, color: C.bg, border: 'none',
-          fontFamily: mono, fontSize: 11, letterSpacing: 2, fontWeight: 700,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
-        }}>
-          <Plus size={12} strokeWidth={3} /> ADD LAYOUT
-        </button>
-      </div>
-
-      <div className="club-table-scroll" style={{ border: `1px solid ${C.border}`, overflow: 'auto', maxHeight: 600 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 12 }}>
-          <thead>
-            <tr style={{ background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
-              <Th>TRACK</Th>
-              <Th>LAYOUT</Th>
-              <Th>REGION</Th>
-              <Th>LAPS</Th>
-              <Th>SOURCE</Th>
-              <Th></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {allTracks.map(t => (
-              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}` }}>
-                <Td>{t.name}</Td>
-                <Td><span style={{ color: C.textDim }}>{t.variant}</span></Td>
-                <Td><span style={{ color: C.textFaint }}>{t.region}</span></Td>
-                <Td><span style={{ fontVariantNumeric: 'tabular-nums' }}>{laps.filter(l => l.track === t.id).length}</span></Td>
-                <Td>
-                  <span style={{
-                    fontSize: 9, padding: '1px 5px', letterSpacing: 1,
-                    border: `1px solid ${customIds.has(t.id) ? C.green : C.borderLight}`,
-                    color: customIds.has(t.id) ? C.green : C.textFaint
-                  }}>
-                    {customIds.has(t.id) ? 'CUSTOM' : 'BUILT-IN'}
-                  </span>
-                </Td>
-                <Td>
-                  {customIds.has(t.id) && (
-                    <button onClick={() => { if (confirm(`Delete ${t.name} ${t.variant}?`)) onDelete(t.id); }} style={{
-                      background: 'transparent', border: `1px solid ${C.border}`,
-                      color: C.red, padding: '3px 7px', fontFamily: mono, fontSize: 9
-                    }}>DEL</button>
-                  )}
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div>
   );
