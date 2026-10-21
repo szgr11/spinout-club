@@ -1,7 +1,7 @@
 import { supabase, publicSupabase } from './supabase'
 import { CLUB_FONT } from './typography.js';
 import Header from './ClubHeader.jsx';
-import {mergeTracks} from './tracks.js';
+import {mergeTracks,listedBoardTracks} from './tracks.js';
 import TrackLayoutFields from './TrackLayoutFields.jsx';
 import {ModInbox,useModOpenCount} from './ModMessages.jsx';
 import LapHistoryGraphic from './LapHistoryGraphic.jsx';
@@ -828,12 +828,14 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
   const [expandedLaps,setExpandedLaps]=useState({});
   const [lightbox, setLightbox] = useState(null);   // {imageData, driver, time}
   const [reportTarget, setReportTarget] = useState(null); // lap object
-  const trackLaps = useMemo(() => selectPersonalBests(laps,{track:activeTrack,type:filterType}), [laps, activeTrack, filterType]);
+  const boardTracks = useMemo(()=>listedBoardTracks(allTracks,laps),[allTracks,laps]);
+  const trackInfo = boardTracks.find(t=>t.id===activeTrack)||boardTracks[0];
+  const displayedTrack = trackInfo?.id||'';
+  const trackLaps = useMemo(() => selectPersonalBests(laps,{track:displayedTrack,type:filterType}), [laps, displayedTrack, filterType]);
 
-  useEffect(()=>{if(allTracks.find(t=>t.id===activeTrack)?.hidden){const first=allTracks.find(t=>!t.hidden);if(first)setActiveTrack(first.id);}},[allTracks,activeTrack]);
-  const trackInfo = allTracks.find(t => t.id === activeTrack) || allTracks[0];
+  useEffect(()=>{if(displayedTrack&&displayedTrack!==activeTrack)setActiveTrack(displayedTrack);},[displayedTrack,activeTrack,setActiveTrack]);
 
-  if(!allTracks.some(t=>!t.hidden))return <p>No circuits are currently listed.</p>;
+  if(!trackInfo)return <p>No approved lap times are currently listed.</p>;
 
   return (
     <div>
@@ -880,7 +882,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
       )}
 
       <div className="board-track-layout" style={{marginBottom:28}}>
-        <TrackLayoutFields tracks={allTracks} laps={laps} allowArchived value={activeTrack} onChange={setActiveTrack} style={inputStyle}/>
+        <TrackLayoutFields tracks={boardTracks} laps={laps} allowArchived value={displayedTrack} onChange={setActiveTrack} style={inputStyle}/>
       </div>
 
       <div className="scanline club-board-heading" style={{
@@ -947,7 +949,7 @@ export function LeaderboardView({ laps, activeTrack, setActiveTrack, allTracks, 
                 <Th></Th>
               </tr>
             </thead>
-            <tbody key={`${activeTrack}:${filterType}`} className="club-stack">
+            <tbody key={`${displayedTrack}:${filterType}`} className="club-stack">
               {trackLaps.map((l, i) => {
                 const lead = trackLaps[0];
                 const gap = parseTime(l.time) - parseTime(lead.time);
