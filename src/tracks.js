@@ -1,4 +1,4 @@
-import {deduplicateLaps} from './laps.js';
+import {deduplicateLaps,lapSeconds} from './laps.js';
 // IDs identify exact configurations. Never rewrite old lap.track values.
 // Primary references: https://buttonwillowraceway.com/track-info/track-maps/
 // https://www.thunderhill.com/track-info/track-maps
@@ -50,4 +50,9 @@ export function mergeTracks(saved=[]){
  return [...values.values()];
 }
 export function layoutCounts(laps=[]){return deduplicateLaps(laps).reduce((r,l)=>{r[l.track]=(r[l.track]||0)+1;return r;},{});}
+// Derive board visibility from approved results; leave the submission/editor catalog intact.
+export function listedBoardTracks(tracks,approvedLaps=[]){
+ const entered=new Set(approvedLaps.filter(l=>Number.isFinite(lapSeconds(l.time))).map(l=>l.track));
+ return tracks.filter(t=>!t.hidden&&entered.has(t.id));
+}
 export const layoutLabel=t=>!t?.variant||t.variant==='—'?'Layout unspecified':t.variant;

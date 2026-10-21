@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {BUILTIN_TRACKS,groupTracks,mergeTracks} from '../src/tracks.js';
+import {BUILTIN_TRACKS,groupTracks,mergeTracks,listedBoardTracks} from '../src/tracks.js';
 import {getTrackMap,TRACE_PRESETS} from '../src/track-maps.js';
 import {personalBests} from '../src/laps.js';
 test('Track groups preserve every legacy configuration ID and separate layouts',()=>{
@@ -35,6 +35,21 @@ test('Same driver and car retain distinct PBs for every configuration',()=>{
  const laps=['btn_cw13','btn_ccw13','btn_cw13a','thunder_east_cyclone','thunder_east_bypass'].map((track,i)=>({track,driver:'Driver',car:'GR86',time:`1:2${i}.000`}));
  assert.equal(personalBests(laps).length,5);
  assert.equal(personalBests(laps,{track:'btn_cw13'}).length,1);
+});
+
+test('Boards auto-hide empty layouts and circuits while respecting manual visibility',()=>{
+ const tracks=BUILTIN_TRACKS.map(t=>t.id==='sow_cw'?{...t,active:false}:t.id==='btn_ccw13'?{...t,hidden:true}:t);
+ const approved=[{track:'sow_cw',time:'1:30.000',type:'optimal'},{track:'btn_cw13',time:'2:00.000'},{track:'btn_ccw13',time:'1:59.000'},{track:'lvms',time:'invalid'}];
+ const listed=listedBoardTracks(tracks,approved);
+ assert.deepEqual(listed.map(t=>t.id),['sow_cw','btn_cw13']);
+ assert.equal(groupTracks(listed).find(g=>g.key==='buttonwillow').layouts.length,1);
+ assert.equal(groupTracks(listed).some(g=>g.key==='lvms'),false);
+ assert.equal(listed[0].active,false); // Archived history is still listed.
+ assert.equal(listedBoardTracks(tracks,[]).length,0);
+ const firstTime=[...approved,{track:'btn_circuit',time:'1:58.000'}];
+ assert.ok(listedBoardTracks(tracks,firstTime).some(t=>t.id==='btn_circuit'));
+ assert.equal(listedBoardTracks(tracks,firstTime.filter(l=>l.track!=='btn_cw13')).some(t=>t.id==='btn_cw13'),false);
+ assert.ok(tracks.some(t=>t.id==='btn_cw25a'&&t.active&&!t.hidden)); // First-time submissions stay possible.
 });
 
 test('Map credits and configuration identities follow their actual references',()=>{
