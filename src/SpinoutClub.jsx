@@ -11,6 +11,7 @@ import { deduplicateLaps, personalBests as selectPersonalBests, personalBestKey,
 import { SecureAuth, GoogleButton } from './SecureAuth.jsx';
 import React, { lazy, Suspense, useState, useEffect, useMemo } from 'react';
 import OptionalFeature from './OptionalFeature.jsx';
+import PageLoading from './PageLoading.jsx';
 import {applyGarageSpecs} from './event-tools.js';
 const TrackEditor=lazy(()=>import('./TrackEditor.jsx'));
 const Garage=lazy(()=>import('./Garage.jsx'));
@@ -652,11 +653,7 @@ export default function App({ publicView = false }) {
 
   // ----- RENDER -----
   if (!loaded) {
-    return (
-      <div className="club-page" style={{ minHeight: '100vh', color: C.text, fontFamily: mono, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <BootScreen />
-      </div>
-    );
+    return <PageLoading/>;
   }
 
   return (
@@ -764,19 +761,6 @@ function GlobalStyle() {
       button { font-family: inherit; cursor: pointer; }
       button:disabled { opacity: 0.4; cursor: not-allowed; }
     `}</style>
-  );
-}
-
-function BootScreen() {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 14, letterSpacing: 4, color: C.accent, marginBottom: 8 }}>
-        THE SPINOUT CLUB
-      </div>
-      <div style={{ fontSize: 11, color: C.textDim, fontFamily: mono }}>
-        <span className="blink">▮</span> INITIALIZING
-      </div>
-    </div>
   );
 }
 

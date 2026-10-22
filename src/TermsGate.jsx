@@ -6,6 +6,7 @@ import './terms.css';
 import PublicTermsBoundary from './PublicTerms.jsx';
 import TermsDocument from './TermsDocument.jsx';
 import {savePublicAcceptance} from './public-terms.js';
+import PageLoading from './PageLoading.jsx';
 
 function rememberVerifiedAcceptance(status){
  if(status.accepted&&status.version===TERMS.version&&status.content_hash===TERMS_HASH){
@@ -90,5 +91,6 @@ export default function TermsBoundary({children,publicFeature=false}){
  if(state==='public'&&!user)return publicFeature?<PublicTermsBoundary>{children}</PublicTermsBoundary>:children;
  if(state==='accepted'&&checkedId===user?.id)return children;
  if(state==='required'&&checkedId===user?.id)return <TermsGate key={user.id} onAccepted={async()=>{if(!await check())throw new Error('Acceptance not confirmed');}} onDecline={decline}/>;
- return <div className="club-page terms-page"><Header/><main className="terms-intro"><h1>{state==='loading'?'Checking account…':state==='outdated'?'The Terms have been updated':'Could not check your agreement'}</h1><p>{state==='loading'?'Please wait.':state==='outdated'?'Refresh to load the current document before continuing.':'Your member tools will stay locked until we can verify your acceptance.'}</p>{state!=='loading'&&<><button className="terms-primary" onClick={()=>state==='outdated'?window.location.reload():setRetry(n=>n+1)}>{state==='outdated'?'Refresh page':'Try again'}</button><button className="terms-secondary" onClick={decline}>Sign out</button><p><a href="/contact">Report or contact</a></p></>}</main></div>;
+ if(state==='loading')return <PageLoading/>;
+ return <div className="club-page terms-page"><Header/><main className="terms-intro"><h1>{state==='outdated'?'The Terms have been updated':'Could not check your agreement'}</h1><p>{state==='outdated'?'Refresh to load the current document before continuing.':'Your member tools will stay locked until we can verify your acceptance.'}</p>{<><button className="terms-primary" onClick={()=>state==='outdated'?window.location.reload():setRetry(n=>n+1)}>{state==='outdated'?'Refresh page':'Try again'}</button><button className="terms-secondary" onClick={decline}>Sign out</button><p><a href="/contact">Report or contact</a></p></>}</main></div>;
 }
