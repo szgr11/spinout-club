@@ -59,3 +59,11 @@ test('unverified email and successful proofs for the wrong action cannot submit'
  const wrong=createHandler({admin:{rpc:async name=>({data:name==='spinout_security_config'?{turnstile_secret:'test-only'}:true})},client:{},fetcher:verified('email')});
  assert.equal((await wrong(request({action:'login',username:'member',password:'wrong',captcha:'fresh'}))).status,403);
 });
+test('public complaints require bot proof and quotas, ignore forged staff fields, and expose no record data',async()=>{
+ let writes=0,allowed=true;
+ const handler=createHandler({admin:{rpc:async name=>({data:name==='spinout_security_config'?{turnstile_secret:'test-only'}:allowed}),from:name=>{assert.equal(name,'legal_reports');return {insert:async row=>{writes++;assert.deepEqual(row,{email:'owner@example.com',subject:'Rights request',body:'Please review this uploaded photo.',page:'https://spinoutclub.cc/leaderboard',category:'copyright'});return {};}};}},client:{},fetcher:verified('legal_report')});
+ const body={action:'legal_report',category:'copyright',email:'OWNER@example.com',subject:'Rights request',body:'Please review this uploaded photo.',page:'https://spinoutclub.cc/leaderboard',status:'resolved',id:'forged',auth_user_id:'forged'};
+ assert.equal((await handler(request(body))).status,403);assert.equal(writes,0);
+ const r=await handler(request({...body,captcha:'fresh'}));assert.equal(r.status,200);assert.deepEqual(await r.json(),{ok:true});assert.equal(writes,1);
+ allowed=false;assert.equal((await handler(request({...body,captcha:'fresh'}))).status,429);assert.equal(writes,1);
+});

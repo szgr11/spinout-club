@@ -26,7 +26,7 @@ export function createHandler({admin,client,fetcher=fetch}) {
    if(Number(request.headers.get('content-length')||0)>8192)return reply(413,{error:'Request too large'});
    let text;try{text=await readBody(request);}catch(e){if(e instanceof RangeError)return reply(413,{error:'Request too large'});throw e;}
    let body;try{body=JSON.parse(text);}catch{return reply(400,{error:'Invalid request'});}
-   if(!body||!['login','email','application'].includes(body.action))return reply(400,{error:'Invalid action'});
+   if(!body||!['login','email','application','legal_report'].includes(body.action))return reply(400,{error:'Invalid action'});
    if(body.website)return reply(400,{error:'Invalid request'});
    let user=null;
    if(body.action==='application'){
@@ -50,6 +50,15 @@ export function createHandler({admin,client,fetcher=fetch}) {
     if(!r.ok)throw new Error('verification unavailable');challenge=await r.json();
    }catch{return reply(403,{error:'Bot verification failed. Please try again.'});}
    if(!validChallenge(challenge,body.action))return reply(403,{error:'Bot verification expired or failed. Please try again.'});
+   if(body.action==='legal_report'){
+    const email=String(body.email||'').trim().toLowerCase(),subject=String(body.subject||'').trim(),message=String(body.body||'').trim(),page=String(body.page||'').trim(),category=body.category;
+    if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||subject.length<1||subject.length>120||message.length<10||message.length>4000||page.length>500||!['community','copyright','counter_notice','privacy','appeal','other'].includes(category))return reply(400,{error:'Enter a contact email, subject, topic, and message (10–4,000 characters).'});
+    if(page){try{const u=new URL(page);if(!['https:','http:'].includes(u.protocol))throw new Error();}catch{return reply(400,{error:'Use a valid http or https page address'});}}
+    if(!await rate('legal-report-ip:'+ip,5,3600)||!await rate('legal-report-email:'+await hash(email),5,3600))return reply(429,{error:'Too many reports. Please wait before sending another.'});
+    const r=await admin.from('legal_reports').insert({email,subject,body:message,page,category});
+    if(r.error)return reply(503,{error:'Could not save your report. Please try again later.'});
+    return reply(200,{ok:true});
+   }
    if(body.action==='email'){
     const email=String(body.email||'').trim().toLowerCase();
     if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.endsWith('@members.spinoutclub.cc'))return reply(400,{error:'Enter a valid email address'});

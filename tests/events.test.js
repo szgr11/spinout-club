@@ -81,5 +81,5 @@ test('upstream failures retain previously verified dates and mark affected sourc
  const original=globalThis.fetch;
  globalThis.fetch=async()=>new Response('unavailable',{status:503});
  let saved;const previous={sources:[{id:'speedventures',lastSuccess:'2026-10-01T00:00:00Z',count:1}],events:[{date:'2099-01-01',track:'Sonoma',organizer:'Speed Ventures',kind:'Track day',sources:[{id:'speedventures'}]}]};
- try{await refreshEvents({get:async()=>previous,put:async(k,v)=>saved=JSON.parse(v)});assert.equal(saved.events.length,1);assert.ok(saved.sources.every(s=>s.status==='stale'));assert.equal(saved.sources[0].lastSuccess,previous.sources[0].lastSuccess);}finally{globalThis.fetch=original;}
+ try{await refreshEvents({get:async()=>previous,put:async(k,v)=>saved=JSON.parse(v)});assert.equal(saved.events.length,1);assert.ok(saved.sources.every(s=>s.status===(s.id==='motorsportreg-api'?'pending_access':'stale')));assert.equal(saved.sources[0].lastSuccess,previous.sources[0].lastSuccess);}finally{globalThis.fetch=original;}
 });
