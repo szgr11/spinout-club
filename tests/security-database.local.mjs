@@ -36,6 +36,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
   await db.exec(await readFile(new URL('../supabase/migrations/20261021060415_track_layouts_mod_inbox.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261021062909_visual_track_catalog.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261022022952_terms_acceptance_and_rights_reports.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261022032823_publish_public_and_member_terms.sql',import.meta.url),'utf8'));
   const scalar=async q=>(await db.query(q)).rows[0];
   const as=async(role,uid='')=>db.exec("reset role;set role "+role+";set request.jwt.claim.sub='"+uid+"';");
   await db.exec("update profiles set auth_user_id='"+ADMIN+"' where username='admin';update profiles set auth_user_id='"+MEMBER+"' where username='member';update profiles set auth_user_id='"+BANNED+"' where username='banned';");
@@ -74,7 +75,8 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
    assert.equal((await scalar('select spinout_terms_status() s')).s.accepted,false);
    assert.equal((await scalar('select count(*) n from laps')).n,0);
    await assert.rejects(accept(true),/Terms changed/);
-   await as('postgres');await db.exec("delete from spinout_private.terms_documents where version='future';update spinout_private.terms_documents set active=true;");
+   await as('postgres');await db.exec("delete from spinout_private.terms_documents where version='future';");
+   await db.query('update spinout_private.terms_documents set active=(version=$1)',[TERMS.version]);
   });
   // Existing permission tests use only synthetic accounts with valid evidence.
   await as('postgres');

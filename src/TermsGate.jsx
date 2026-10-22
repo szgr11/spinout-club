@@ -3,9 +3,14 @@ import {TERMS,TERMS_HASH,TERMS_WAIT_SECONDS} from './terms.js';
 import Header from './ClubHeader.jsx';
 import {supabase} from './supabase.js';
 import './terms.css';
+import PublicTermsBoundary from './PublicTerms.jsx';
+import TermsDocument from './TermsDocument.jsx';
+import {savePublicAcceptance} from './public-terms.js';
 
-export function TermsDocument(){
- return <article className="terms-document"><p className="terms-meta">Version {TERMS.version} · Effective {TERMS.effectiveDate}</p>{TERMS.sections.map(section=><section key={section.title}><h2>{section.title}</h2>{section.paragraphs.map((p,i)=><p key={i}>{p}</p>)}</section>)}<p><a href="/contact">Report or contact the operator</a></p><p className="terms-end">End of Terms of Use</p></article>;
+function rememberVerifiedAcceptance(status){
+ if(status.accepted&&status.version===TERMS.version&&status.content_hash===TERMS_HASH){
+  try{savePublicAcceptance(window.localStorage,new Date(status.accepted_at));}catch{/* Account proof remains on the server. */}
+ }
 }
 
 // Review and bottom times are issued by the server. A local clock cannot shorten
@@ -51,15 +56,15 @@ export function TermsGate({onAccepted,onDecline,api=supabase}){
    <div className="terms-scroll" ref={scroller} tabIndex={0} role="region" aria-label="Scrollable Terms of Use" onScroll={reachedBottom}><TermsDocument/></div>
    <form className="terms-tray-footer" onSubmit={accept}>
     <p className="terms-progress" role="status" aria-live="polite">{!ready?'Preparing review…':!bottom?'Scroll to the bottom to continue.':remaining>0?`You reached the end. Acceptance unlocks in ${remaining}s.`:'Review complete. You can now choose whether to accept.'}</p>
-    <label className={`terms-agreement ${unlocked?'':'terms-locked'}`}><input type="checkbox" checked={agreed} disabled={!unlocked||busy} onChange={e=>setAgreed(e.target.checked)}/><span>I am at least 18 years old. I have read and agree to the Spinout Club Terms of Use, version {TERMS.version}.</span></label>
+    <label className={`terms-agreement ${unlocked?'':'terms-locked'}`}><input type="checkbox" checked={agreed} disabled={!unlocked||busy} onChange={e=>setAgreed(e.target.checked)}/><span>I am at least 18 years old. I have had an opportunity to review and agree to the Spinout Club Terms of Use, version {TERMS.version}.</span></label>
     {error&&<p className="terms-error" role="alert">{error}</p>}
-    <div className="terms-actions"><button className="terms-secondary" type="button" disabled={busy} onClick={close}>Back</button><button className="terms-primary" disabled={busy||!unlocked||!agreed}>{busy?'Saving…':'Accept and continue'}</button></div>
+    <div className="terms-actions"><button className="terms-secondary" type="button" disabled={busy} onClick={close}>Back</button><button className="terms-primary" disabled={busy||!unlocked||!agreed}>{busy?'Saving…':'I agree to the Terms of Use'}</button></div>
    </form>
   </dialog>
  </div>;
 }
 
-export default function TermsBoundary({children}){
+export default function TermsBoundary({children,publicFeature=false}){
  const [user,setUser]=useState(undefined),[state,setState]=useState('loading'),[retry,setRetry]=useState(0);
  const [checkedId,setCheckedId]=useState(null);
  useEffect(()=>{
@@ -68,21 +73,22 @@ export default function TermsBoundary({children}){
   const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{changed=true;if(active)setUser(session?.user||null);});
   supabase.auth.getSession().then(r=>{if(active&&!changed){if(r.error)setState('error');else setUser(r.data.session?.user||null);}}).catch(()=>{if(active)setState('error');});
   return()=>{active=false;subscription.unsubscribe();};
- },[]);
+ },[retry]);
  const check=async()=>{
   const r=await supabase.rpc('spinout_terms_status');if(r.error)throw r.error;
   if(r.data?.version!==TERMS.version||r.data?.content_hash!==TERMS_HASH){setState('outdated');return false;}
-  setCheckedId(user.id);setState(r.data.accepted?'accepted':'required');return r.data.accepted;
+  rememberVerifiedAcceptance(r.data);setCheckedId(user.id);setState(r.data.accepted?'accepted':'required');return r.data.accepted;
  };
  useEffect(()=>{
   if(user===undefined)return;if(!user){setState('public');return;}
   let active=true;setState('loading');
-  const load=async()=>{try{const r=await supabase.rpc('spinout_terms_status');if(!active)return;if(r.error)throw r.error;setCheckedId(user.id);if(r.data?.version!==TERMS.version||r.data?.content_hash!==TERMS_HASH)setState('outdated');else setState(r.data.accepted?'accepted':'required');}catch{if(active)setState('error');}};
+  const load=async()=>{try{const r=await supabase.rpc('spinout_terms_status');if(!active)return;if(r.error)throw r.error;setCheckedId(user.id);if(r.data?.version!==TERMS.version||r.data?.content_hash!==TERMS_HASH)setState('outdated');else{rememberVerifiedAcceptance(r.data);setState(r.data.accepted?'accepted':'required');}}catch{if(active)setState('error');}};
   load();const focus=()=>{if(document.visibilityState==='visible')load();};window.addEventListener('focus',focus);
   return()=>{active=false;window.removeEventListener('focus',focus);};
  },[user?.id,user===undefined,retry]);
  const decline=async()=>{const r=await supabase.auth.signOut();if(r.error){setState('error');return;}window.location.assign('/events');};
- if((state==='public'&&!user)||(state==='accepted'&&checkedId===user?.id))return children;
+ if(state==='public'&&!user)return publicFeature?<PublicTermsBoundary>{children}</PublicTermsBoundary>:children;
+ if(state==='accepted'&&checkedId===user?.id)return children;
  if(state==='required'&&checkedId===user?.id)return <TermsGate key={user.id} onAccepted={async()=>{if(!await check())throw new Error('Acceptance not confirmed');}} onDecline={decline}/>;
  return <div className="club-page terms-page"><Header/><main className="terms-intro"><h1>{state==='loading'?'Checking account…':state==='outdated'?'The Terms have been updated':'Could not check your agreement'}</h1><p>{state==='loading'?'Please wait.':state==='outdated'?'Refresh to load the current document before continuing.':'Your member tools will stay locked until we can verify your acceptance.'}</p>{state!=='loading'&&<><button className="terms-primary" onClick={()=>state==='outdated'?window.location.reload():setRetry(n=>n+1)}>{state==='outdated'?'Refresh page':'Try again'}</button><button className="terms-secondary" onClick={decline}>Sign out</button><p><a href="/contact">Report or contact</a></p></>}</main></div>;
 }

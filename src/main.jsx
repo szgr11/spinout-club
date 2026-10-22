@@ -26,7 +26,7 @@ function ConfigurationNotice() {
 const publicBoards = /^\/leaderboards?(?:\/|$)/.test(window.location.pathname);
 const legalPage = /^\/(terms|contact|storage)\/?$/.test(window.location.pathname);
 createRoot(document.getElementById('root')).render(
-  <>{legalPage ? <LegalPages contact={window.location.pathname.startsWith('/contact')} storage={window.location.pathname.startsWith('/storage')}/> : <TermsBoundary>
+  <>{legalPage ? <LegalPages contact={window.location.pathname.startsWith('/contact')} storage={window.location.pathname.startsWith('/storage')}/> : <TermsBoundary publicFeature={!window.location.pathname.startsWith('/members')}>
   {(window.location.pathname.startsWith('/members') || publicBoards)
     ? (isSupabaseConfigured ? <Suspense fallback={<div className="club-page" style={{color:'#ffd400',padding:40}}>Loading Spinout Club…</div>}><App publicView={publicBoards} /></Suspense> : <ConfigurationNotice />)
     : <EventsCalendar onMembers={() => window.location.assign('/members')} />}

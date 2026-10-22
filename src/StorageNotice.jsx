@@ -21,7 +21,7 @@ export default function StorageNotice(){
  const dismiss=()=>{try{localStorage.setItem(NOTICE_KEY,'dismissed');}catch{/* Dismiss for this page even when storage is blocked. */}setVisible(false);};
  if(!visible)return null;
  return <aside className="storage-notice" ref={panel} aria-labelledby="storage-notice-title">
-  <div className="storage-notice-copy"><h2 id="storage-notice-title">Cookies &amp; storage</h2><p>We use browser storage to keep you signed in. Cloudflare may use essential security cookies to protect the site. We don’t use advertising or analytics cookies.</p></div>
+  <div className="storage-notice-copy"><h2 id="storage-notice-title">Cookies &amp; storage</h2><p>We use browser storage to keep you signed in and remember your Terms agreement. Cloudflare may use essential security cookies to protect the site. We don’t use advertising or analytics cookies.</p></div>
   <div className="storage-notice-actions"><a href="/storage">Details</a><button type="button" ref={dismissButton} onClick={dismiss}>Got it</button></div>
  </aside>;
 }
