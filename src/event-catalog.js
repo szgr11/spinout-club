@@ -5,17 +5,17 @@ export const ORGANIZERS = [
   {id:'speedventures',name:'Speed Ventures',url:'https://www.speedventures.com/events/Default.aspx',adapter:'speedventures'},
   {id:'extremespeed',name:'Extreme Speed',url:'https://www.extremespeedtrackevents.com/event-registration',adapter:'extremespeed'},
   {id:'ongrid',name:'OnGrid',url:'https://www.ongridtrack.com/',adapter:'squarespace'},
-  {id:'hookedondriving',name:'Hooked on Driving',url:'https://www.hookedondriving.com/track-days-schedule/',feedUrl:'https://www.motorsportreg.com/orgs/hooked-on-driving/california',adapter:'msr'},
+  {id:'hookedondriving',name:'Hooked on Driving',url:'https://www.hookedondriving.com/track-days-schedule/',feedUrl:'https://www.motorsportreg.com/orgs/hooked-on-driving/california',adapter:'msr-api'},
   {id:'speeddistrict',name:'Speed District',url:'https://speeddistrict.com/events/',adapter:'speeddistrict'},
   {id:'speedsf',name:'SpeedSF',url:'https://www.speedsf.com/events-registration/',adapter:'speedsf'},
   {id:'viptrackdays',name:'VIP Track Days',url:'https://www.instagram.com/viptrackdays/',note:'Instagram announcements'},
   {id:'tracked',name:'TRACKED.llc',url:'https://www.tracked.llc/',note:'Schedule unavailable'},
-  {id:'slipangle',name:'Slip Angle Track Events',url:'https://www.motorsportreg.com/orgs/slip-angle-track-events',adapter:'msr'},
+  {id:'slipangle',name:'Slip Angle Track Events',url:'https://www.motorsportreg.com/orgs/slip-angle-track-events',adapter:'msr-api'},
   {id:'fastlane',name:'FastLane Racing School',url:'https://www.raceschool.com/experiences/track-days/',note:'Standalone track days not offered'},
   {id:'turn8',name:'Turn8',url:'https://www.turn8racing.com/',adapter:'wix'},
   {id:'touge2track',name:'Touge2Track',url:'https://touge2track.com/',note:'Schedule unavailable'},
   {id:'socaldriversclub',name:'SoCal Drivers Club',url:'https://www.socaldriversclub.com/event-registration',adapter:'sdc'},
-  {id:'fasttoys',name:'Fast Toys Club',url:'https://www.fasttoysclub.com/fast-toys-track-days/',feedUrl:'https://www.motorsportreg.com/orgs/fast-toys-club',adapter:'msr'},
+  {id:'fasttoys',name:'Fast Toys Club',url:'https://www.fasttoysclub.com/fast-toys-track-days/',feedUrl:'https://www.motorsportreg.com/orgs/fast-toys-club',adapter:'msr-api'},
   {id:'westcoast',name:'West Coast Racing',url:'https://www.westcoastracinginc.com/events',adapter:'squarespace'}
 ];
 export const CALENDAR_TRACKS = [

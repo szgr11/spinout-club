@@ -33,5 +33,5 @@ export default {
     if (url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
     return env.ASSETS.fetch(request);
   },
-  async scheduled(controller,env,ctx) { ctx.waitUntil(refreshEvents(env.EVENTS)); },
+  async scheduled(controller,env,ctx) { ctx.waitUntil(refreshEvents(env.EVENTS,env)); },
 };

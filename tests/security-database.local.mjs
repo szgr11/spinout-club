@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {pgcrypto} from '@electric-sql/pglite/contrib/pgcrypto';
+import {TERMS,TERMS_HASH} from '../src/terms.js';
 const ADMIN='10000000-0000-0000-0000-000000000001',MEMBER='10000000-0000-0000-0000-000000000002',NEW='10000000-0000-0000-0000-000000000003',BANNED='10000000-0000-0000-0000-000000000004';
 test('security migration in isolated PostgreSQL with synthetic users only',async t=>{
  const db=new PGlite({extensions:{pgcrypto}});
@@ -34,9 +35,70 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
   await db.exec(await readFile(new URL('../supabase/migrations/20261020063347_moderator_permissions.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261021060415_track_layouts_mod_inbox.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261021062909_visual_track_catalog.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261022022952_terms_acceptance_and_rights_reports.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261022032823_publish_public_and_member_terms.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261022035414_operator_privacy_and_liability_cap.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261022042339_terms_review_timer_from_open.sql',import.meta.url),'utf8'));
   const scalar=async q=>(await db.query(q)).rows[0];
   const as=async(role,uid='')=>db.exec("reset role;set role "+role+";set request.jwt.claim.sub='"+uid+"';");
   await db.exec("update profiles set auth_user_id='"+ADMIN+"' where username='admin';update profiles set auth_user_id='"+MEMBER+"' where username='member';update profiles set auth_user_id='"+BANNED+"' where username='banned';");
+  await t.test('terms require server review, bottom acknowledgement, twelve seconds and affirmative consent',async()=>{
+   const args=[TERMS.version,TERMS_HASH];
+   await as('anon');
+   await assert.rejects(db.query('select spinout_terms_status()'),/permission denied/);
+   await assert.rejects(db.query("select * from spinout_private.terms_acceptances"),/permission denied/);
+   await as('authenticated',MEMBER);
+   assert.equal((await scalar('select spinout_terms_status() s')).s.accepted,false);
+   assert.equal((await scalar('select count(*) n from laps')).n,0);
+   await assert.rejects(db.query("insert into pending_laps(id,driver,time,submitted_by) values('before-terms','Member','1:30.000','member')"),/row-level security/);
+   await assert.rejects(db.query("select spinout_begin_terms_review('old','bad')"),/Terms changed/);
+   const review=(await db.query('select spinout_begin_terms_review($1,$2) id',args)).rows[0].id;
+   const accept=agreed=>db.query('select spinout_accept_terms($1,$2,$3,$4)',[...args,review,agreed]);
+   await assert.rejects(accept(false),/Choose whether/);
+   await assert.rejects(accept(true),/scroll through/);
+   await db.query('select spinout_terms_bottom($1)',[review]);
+   await assert.rejects(accept(true),/Wait 12 seconds/);
+   await as('authenticated',NEW);
+   await assert.rejects(db.query('select spinout_terms_bottom($1)',[review]),/Review expired/);
+   await assert.rejects(accept(true),/scroll through/);
+   await as('postgres');
+   await assert.rejects(db.query("select spinout_submit_application('"+NEW+"','newdriver','New driver','I attend track days')"),/Accept the current Terms/);
+   await db.query("update spinout_private.terms_reviews set opened_at=clock_timestamp()-interval '20 seconds',bottom_at=null where review_id=$1",[review]);
+   await as('authenticated',MEMBER);
+   await assert.rejects(accept(true),/scroll through/);
+   await db.query('select spinout_terms_bottom($1)',[review]);
+   await accept(true); // No additional wait after scrolling when review duration has elapsed.
+   assert.equal((await scalar('select spinout_terms_status() s')).s.accepted,true);
+   const first=(await scalar('select spinout_terms_status() s')).s.accepted_at;
+   await accept(true);assert.equal((await scalar('select spinout_terms_status() s')).s.accepted_at,first);
+   assert.equal((await scalar('select count(*) n from laps')).n,1);
+   await assert.rejects(db.query('delete from spinout_private.terms_acceptances'),/permission denied/);
+   await as('postgres');
+   await db.query("update spinout_private.terms_documents set active=false");
+   await db.query("insert into spinout_private.terms_documents(version,content_hash,document,active) values('future',$1,'{}',true)",['a'.repeat(64)]);
+   await as('authenticated',MEMBER);
+   assert.equal((await scalar('select spinout_terms_status() s')).s.accepted,false);
+   assert.equal((await scalar('select count(*) n from laps')).n,0);
+   await assert.rejects(accept(true),/Terms changed/);
+   await as('postgres');await db.exec("delete from spinout_private.terms_documents where version='future';");
+   await db.query('update spinout_private.terms_documents set active=(version=$1)',[TERMS.version]);
+  });
+  // Existing permission tests use only synthetic accounts with valid evidence.
+  await as('postgres');
+  await db.query("insert into spinout_private.terms_acceptances(auth_user_id,version,content_hash,reviewed_at,bottom_at) select id,$1,$2,clock_timestamp()-interval '20 seconds',clock_timestamp()-interval '13 seconds' from auth.users on conflict do nothing",[TERMS.version,TERMS_HASH]);
+  await t.test('public rights reports are private and members cannot forge or rewrite them',async()=>{
+   await as('service_role');
+   const id=(await scalar("insert into legal_reports(category,email,subject,body) values('copyright','synthetic@example.com','Synthetic report','Synthetic complaint text') returning id")).id;
+   await as('anon');await assert.rejects(db.query('select * from legal_reports'),/permission denied/);
+   await as('authenticated',MEMBER);assert.equal((await scalar('select count(*) n from legal_reports')).n,0);
+   await assert.rejects(db.query("insert into legal_reports(category,email,subject,body) values('other','fake@example.com','Bypass','No captcha used')"),/permission denied/);
+   await assert.rejects(db.query("update legal_reports set email='changed@example.com'"),/permission denied/);
+   assert.equal((await db.query("update legal_reports set status='resolved' where id=$1 returning id",[id])).rows.length,0);
+   await as('authenticated',ADMIN);assert.equal((await scalar('select count(*) n from legal_reports')).n,1);
+   await db.query("update legal_reports set status='resolved' where id=$1",[id]);
+   assert.equal((await scalar('select status from legal_reports')).status,'resolved');
+   await as('postgres');await db.query('delete from legal_reports where id=$1',[id]);
+  });
   await t.test('mod messages are private, rate limited, and support staff replies and resolution',async()=>{
    await as('anon');
    await assert.rejects(db.query('select * from mod_threads'),/permission denied/);

@@ -4,12 +4,14 @@ import {ORGANIZERS,canonicalOrganizer} from '../src/event-catalog.js';
 import {parseOrganizerDocument} from './organizers.js';
 import {TRACK_SOURCES,parseTrackCalendar} from './track-calendars.js';
 import {sourceCountHealth,calendarHealth} from './health.js';
+import {MSR_SOURCE,fetchMSREvents,isMSRPage} from './msr-api.js';
 
 export const SOURCES = [
   { id: 'speedventures', name: 'Speed Ventures', url: 'https://www.speedventures.com/events/Default.aspx' },
   { id: 'speedsf', name: 'SpeedSF', url: 'https://www.speedsf.com/events-registration/' },
   { id: 'buttonwillow', name: 'Buttonwillow Raceway', url: 'https://buttonwillowraceway.com/events/' },
-  ...ORGANIZERS.filter(s=>s.adapter&&!['speedventures','speedsf'].includes(s.id)),
+  ...ORGANIZERS.filter(s=>s.adapter&&!['speedventures','speedsf'].includes(s.id)&&s.adapter!=='msr-api'),
+  MSR_SOURCE,
   {id:'nasa-socal-calendar',name:'NASA SoCal schedule',url:'https://nasasocal.com/find-an-event/',adapter:'nasa-calendar',regionLabel:'SoCal'},
   {id:'nasa-norcal-calendar',name:'NASA NorCal schedule',url:'https://nasanorcal.com/tag/sonoma/',adapter:'nasa-calendar',regionLabel:'NorCal'},
   ...TRACK_SOURCES,
@@ -154,12 +156,18 @@ async function boundedText(response) {
   } finally {reader.releaseLock();}
 }
 async function get(url, asJSON = false) {
-  const r = await fetch(url, { headers: { 'User-Agent': 'SpinoutClub-EventCalendar/1.0 (+https://spinoutclub.cc/events)', Accept: asJSON ? 'application/json' : 'text/html' }, signal: AbortSignal.timeout(20000) });
+  let r;
+  for(let n=0;n<4;n++){
+   if(isMSRPage(url))throw new Error('MotorsportReg event pages must use the approved API');
+   r=await fetch(url,{redirect:'manual',headers:{'User-Agent':'SpinoutClub-EventCalendar/1.0 (+https://spinoutclub.cc/events)',Accept:asJSON?'application/json':'text/html'},signal:AbortSignal.timeout(20000)});
+   if(r.status>=300&&r.status<400){url=new URL(r.headers.get('location'),url).href;continue;}break;
+  }
   if (!r.ok) throw new Error(`Source returned HTTP ${r.status}`);
   const body = await boundedText(r);
   return asJSON ? JSON.parse(body) : body;
 }
-export async function fetchSource(source, today = todayPacific()) {
+export async function fetchSource(source, today = todayPacific(),env={}) {
+  if(source.id===MSR_SOURCE.id)return fetchMSREvents({env,today,makeEvent});
   if(TRACK_SOURCES.some(s=>s.id===source.id)){
     if(source.adapter==='chuckwalla-track')return parseTrack(await get(`${source.url}/data?status=2&start=${today}&end=${Number(today.slice(0,4))+2}-01-01`,true),source,today);
     if(source.adapter==='spring-track'){
@@ -192,7 +200,7 @@ export async function fetchSource(source, today = todayPacific()) {
   throw new Error('Unknown source');
 }
 const DETAIL_HOSTS=new Set(['speedventures.com','www.speedventures.com','speedsf.com','www.speedsf.com','buttonwillowraceway.com','www.buttonwillowraceway.com','www.motorsportreg.com','speedsf.motorsportreg.com','hookedondriving.motorsportreg.com','turn8.motorsportreg.com','msreg.com',...ORGANIZERS.filter(s=>s.adapter).flatMap(s=>[new URL(s.url).hostname,s.feedUrl?new URL(s.feedUrl).hostname:undefined]).filter(Boolean)]);
-const detailAllowed=url=>{try{const u=new URL(url);return u.protocol==='https:'&&DETAIL_HOSTS.has(u.hostname);}catch{return false;}};
+const detailAllowed=url=>{try{const u=new URL(url);return !isMSRPage(url)&&u.protocol==='https:'&&DETAIL_HOSTS.has(u.hostname);}catch{return false;}};
 async function detailHTML(url) {
  for(let redirects=0;redirects<4;redirects++){
   if(!detailAllowed(url))throw new Error('Unsupported event host');
@@ -223,19 +231,22 @@ export async function enrichEvents(events,previous={},today=todayPacific()) {
  });
  return {events:enriched,detailCache:cache,offerCoverage:{total:urls.length,checked:urls.filter(u=>cache[u]?.status==='ok').length,checkedThisRefresh:due.length}};
 }
-export async function refreshEvents(kv) {
+export async function refreshEvents(kv,env={}) {
  const today=todayPacific(),previous=await kv.get('calendar','json');
- const results=await Promise.allSettled(SOURCES.map(s=>fetchSource(s,today)));
+ const results=await Promise.allSettled(SOURCES.map(s=>fetchSource(s,today,env)));
  const events=[],sources=[],sourceSnapshots={};
  results.forEach((result,i)=>{
   const source=SOURCES[i],old=previous?.sources?.find(s=>s.id===source.id);
   if(result.status==='fulfilled'&&(result.value.length||result.value.verifiedEmpty)){
    sourceSnapshots[source.id]=result.value;events.push(...result.value);sources.push({...source,status:'ok',lastSuccess:new Date().toISOString(),count:result.value.length,...sourceCountHealth(result.value.length,old)});
   }else{
-   const prior=previous?.sourceSnapshots?.[source.id]||(previous?.events||[]).filter(e=>e.sources.some(s=>s.id===source.id)).map(e=>({...e,sources:e.sources.filter(s=>s.id===source.id),promotions:(e.promotions||[]).filter(x=>x.sourceId===source.id),prices:(e.prices||[]).filter(x=>x.sourceId===source.id)}));
+   const legacyMSR=source.id===MSR_SOURCE.id?['hookedondriving','slipangle','fasttoys']:[];
+   const legacyRows=legacyMSR.flatMap(id=>previous?.sourceSnapshots?.[id]||[]).map(e=>({...e,sources:[{id:source.id,name:source.name,url:source.url}]}));
+   const prior=previous?.sourceSnapshots?.[source.id]||(legacyRows.length?legacyRows:(previous?.events||[]).filter(e=>e.sources.some(s=>[source.id,...legacyMSR].includes(s.id))).map(e=>({...e,sources:[{id:source.id,name:source.name,url:source.url}],promotions:(e.promotions||[]).filter(x=>[source.id,...legacyMSR].includes(x.sourceId)),prices:(e.prices||[]).filter(x=>[source.id,...legacyMSR].includes(x.sourceId))})));
    sourceSnapshots[source.id]=prior;
    events.push(...prior.map(e=>({...e,sourceStale:true,promotions:(e.promotions||[]).map(x=>({...x,stale:true})),prices:(e.prices||[]).map(x=>({...x,stale:true}))})));
-   sources.push({...source,status:'stale',lastSuccess:old?.lastSuccess||null,count:old?.count||0,error:'Could not refresh this source; verify dates on the organizer’s website.'});
+   const pending=result.status==='rejected'&&result.reason?.code==='msr_access_pending';
+   sources.push({...source,status:pending?'pending_access':'stale',lastSuccess:old?.lastSuccess||null,count:prior.length,error:pending?'API access is pending; confirm last known dates with the organizer.':'Could not refresh this source; verify dates on the organizer’s website.'});
   }
  });
  const enriched=await enrichEvents(mergeEvents(events,today),previous?.detailCache,today);

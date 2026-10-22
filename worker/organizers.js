@@ -71,12 +71,6 @@ export function parseOrganizerDocument(html,source,{makeEvent,parseDateRange,tod
    const date=`${m[3].length===2?'20'+m[3]:m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`,url=new URL(a.attr('href'),source.url).href,price=clean(card.find('.product-list-item-price').text());
    add({title,start:date,url,prices:price?[entry(price,url)]:[],promotions:card.hasClass('on-sale')?[entry(price?'Published sale: '+price:'Sale pricing available; select driving level.',url)]:[],specials:/special session|s2k|beginner day|pre-gta/i.test(title)?[title]:[]});
   });
- }else if(source.adapter==='msr'){
-  const cards=$('[itemtype$="schema.org/Event"]');recognized=cards.length>0||/No upcoming events currently/i.test($.root().text());
-  cards.each((_,node)=>{const card=$(node);if(/Cancelled|Postponed/i.test(card.find('[itemprop="eventStatus"]').attr('content')||''))return;
-   const title=clean(card.find('h3 [itemprop="name"]').text()),venue=clean(card.find('[itemprop="location"] [itemprop="name"]').first().text()),tags=card.find('.card__event-tags').text();if(!/HPDE|Open Track|Driver School|Time Trial|Track Day/i.test(tags))return;
-   add({title,start:card.find('[itemprop="startDate"]').attr('content')?.slice(0,10),end:card.find('[itemprop="endDate"]').attr('content')?.slice(0,10),venue:title+' '+venue,url:card.find('a[itemprop="url"]').attr('href')});
-  });
  }else if(source.adapter==='wix'){
   const raw=$('#wix-warmup-data').text();if(raw){const data=JSON.parse(raw),seen=new Set();
    const visit=v=>{if(!v||typeof v!=='object')return;

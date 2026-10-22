@@ -4,6 +4,7 @@ import {supabase} from './supabase.js';
 import useMember from './useMember.js';
 import {canModerate} from './permissions.js';
 import './mod-messages.css';
+import {RightsInbox} from './LegalPages.jsx';
 
 function Threads({account,staff=false}){
  const [threads,setThreads]=useState([]),[selected,setSelected]=useState(null),[replies,setReplies]=useState([]);
@@ -56,10 +57,10 @@ function Threads({account,staff=false}){
   </div>}
  </div>;
 }
-export function ModInbox({account}){if(!canModerate(account))return null;return <section className="mod-inbox"><h2>Messages to mods</h2><p className="mod-muted">Read, reply, and resolve member conversations.</p><Threads key={account.username} account={account} staff/></section>;}
+export function ModInbox({account}){if(!canModerate(account))return null;return <section className="mod-inbox"><h2>Messages to mods</h2><p className="mod-muted">Read, reply, and resolve member conversations.</p><Threads key={account.username} account={account} staff/><RightsInbox/></section>;}
 export function MemberContact(){
  const {account,loading,error}=useMember();
- return loading?<p role="status">Loading account…</p>:account?<Threads key={account.username} account={account}/>:<div className="mod-login"><p>{error||'Sign in with your club membership to send a private message and read replies.'}</p><a className="mod-primary" href="/members">Sign in →</a></div>;
+ return loading?<p role="status">Loading account…</p>:account?<Threads key={account.username} account={account}/>:<div className="mod-login"><p>{error||'Sign in with your club membership to send a private message and read replies.'}</p><a className="mod-primary" href="/members">Sign in →</a><p><a href="/contact">Report content, copyright, or privacy without an account</a></p></div>;
 }
 
 export function useModOpenCount(account){
