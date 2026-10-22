@@ -21,7 +21,7 @@
 .calendar-context>span{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 .calendar-context small{font-size:9px;color:#969a8f}
 .calendar-today-dot{width:6px;height:6px;display:inline-block;border-radius:0;background:var(--yellow);box-shadow:0 0 10px #ffd40050}
-.events-grid{overflow:hidden;animation:calendar-month-in .18s ease-out both}
+.events-grid{overflow:hidden;animation:calendar-month-in var(--club-enter) var(--club-settle) both}
 .events-day{background:#1a1b1d}
 .events-day.is-past{background:repeating-linear-gradient(135deg,#ffffff02 0 1px,transparent 1px 8px);color:#7f8379}
 .day-number b{display:inline-grid;place-items:center;min-width:26px;height:26px;font-weight:500;border-radius:0}
@@ -30,9 +30,11 @@
 .is-today .day-number b{background:var(--yellow);color:#111214;font-weight:800;box-shadow:0 2px 14px #ffd40025}
 .is-today .day-number .day-caption{color:var(--yellow);font-weight:700}
 .events-day.selected{box-shadow:inset 0 0 0 2px var(--yellow)}
-.calendar-chip{transition:background .15s ease,transform .15s ease}
-.calendar-chip:hover{transform:translateY(-1px);background:#354536}
-.calendar-chip.region-SoCal:hover{background:#3a3417}
+.calendar-chip{position:relative;transition:background var(--club-feedback) ease,transform var(--club-enter) var(--club-settle)}
+@media(hover:hover) and (pointer:fine){
+ .calendar-chip:is(:hover,:focus-visible){transform:translateY(calc(-1 * var(--club-travel)));background:#354536;z-index:1}
+ .calendar-chip.region-SoCal:is(:hover,:focus-visible){background:#3a3417}
+}
 .events-monthnav .today-button{border-color:#807025;background:#ffd40012;color:#ffd400}
 .events-page .calendar-tray{position:fixed;inset:auto 0 18px;margin:auto;width:min(920px,calc(100% - 32px));max-height:78dvh;overflow:auto;overscroll-behavior:contain;border:1px solid #5d5e50;border-top:2px solid #ffd400;border-radius:0;padding:12px 24px 24px;background:#1b1c1f;color:#eeeee8;box-shadow:0 -12px 80px #0009;font-family:var(--font-club)}
 .calendar-tray::backdrop{background:#08090bb3}
@@ -43,12 +45,12 @@
 .calendar-tray-close{display:grid;place-items:center;flex-shrink:0;width:34px;height:34px;background:#2c2e2b;border:1px solid #56594b;color:#eee;border-radius:0}
 .calendar-tray-close:hover{border-color:#ffd400;color:#ffd400}
 @keyframes racing-line-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
-@keyframes calendar-month-in{from{transform:translateX(calc(var(--month-direction,1)*6px))}to{transform:translateX(0)}}
+@keyframes calendar-month-in{from{transform:translateX(calc(var(--month-direction,1)*var(--club-travel)))}to{transform:translateX(0)}}
 @keyframes calendar-tray-in{from{transform:translateY(32px)}to{transform:translateY(0)}}
 @keyframes calendar-backdrop-in{from{opacity:0}to{opacity:1}}
 @media(max-width:1100px){.events-racing-line{max-width:200px}.events-heading{gap:16px}.events-tallies{gap:12px}.events-tally{padding-left:14px}}
 @media(max-width:800px){.events-heading{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:20px 10px}.events-heading-copy{min-width:0}.events-tallies{grid-column:1/-1;margin:0 0 8px}.events-racing-line{width:120px;min-width:0;align-self:center}.events-racing-line span{font-size:6px;letter-spacing:1px}.events-eyebrow{font-size:8px;letter-spacing:1px;margin-bottom:14px}.events-heading h1{font-size:clamp(30px,7vw,48px);letter-spacing:-1.5px}.events-intro{font-size:9px;max-width:230px}.day-number{gap:0;padding:2px 0 6px;flex-wrap:wrap}.day-number b{min-width:22px;height:22px}.day-number .day-caption{font-size:6px;letter-spacing:0}.calendar-context{align-items:flex-start;font-size:9px}.calendar-context .events-text{flex-shrink:0;font-size:9px!important}.calendar-context small{font-size:8px}.events-page .calendar-tray{inset:auto 0 0;width:100%;max-height:85dvh;border-radius:0;padding:12px 14px max(20px,env(safe-area-inset-bottom))}.calendar-tray .events-list-heading h3{font-size:13px}.events-monthnav{gap:6px}.events-monthnav h2{min-width:0;font-size:18px}.events-monthnav .today-button{margin-left:2px}}
-@media(prefers-reduced-motion:reduce){.events-racing-line *,.events-grid,.events-page .calendar-tray,.calendar-tray::backdrop{animation:none!important}.calendar-chip{transition:none}.calendar-chip:hover{transform:none}}
+@media(prefers-reduced-motion:reduce){.events-racing-line *,.events-grid,.events-page .calendar-tray,.calendar-tray::backdrop{animation:none!important}.calendar-chip{transition:none}.calendar-chip:is(:hover,:focus-visible){transform:none}}
 
 .events-page .club-hero h1{color:#eeeee8}.events-page .club-hero .events-tallies{margin:0;gap:16px}.events-page .club-hero .events-tally strong{color:#eeeee8;font-size:30px}.events-page .club-hero .events-tally span{color:#b7bbb1}.events-page .club-hero .events-tally{padding-left:16px}.events-page .events-monthnav h2,.events-page .events-list-heading h3{color:#eeeee8}
 @media(max-width:700px){.events-page .club-hero .events-tallies{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.events-page .club-hero .events-tally{padding-left:10px}.events-page .club-hero .events-tally strong{font-size:25px}.events-page .club-hero .events-tally span{font-size:8px}}

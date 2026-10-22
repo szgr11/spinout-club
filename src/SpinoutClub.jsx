@@ -1159,7 +1159,7 @@ function Th({ children }) {
 }
 
 function Td({ children, label }) {
-  return <td data-label={label} style={{ padding: '12px 14px' }}>{children}</td>;
+  return <td data-label={label} style={{ padding: '12px 14px' }}>{label?<div className="club-cell-content">{children}</div>:children}</td>;
 }
 
 function Stat({ label, value, accent }) {
