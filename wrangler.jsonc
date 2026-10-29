@@ -4,6 +4,10 @@
   "account_id": "260a0ada5fbdf9925db5e9d497b70ddc",
   "compatibility_date": "2026-05-13",
   "preview_urls": false,
+  "vars": {
+    "SUPABASE_URL": "https://wzdqnzfoaaxmnkvxtlpt.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_ui_1-O-OD_r4G-Ef003YCg_qYHymDOM"
+  },
   "main": "worker/index.js",
   "kv_namespaces": [
     {

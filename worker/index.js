@@ -1,10 +1,12 @@
 import { refreshEvents, todayPacific, mergeEvents } from './events.js';
 import {activeOffers,publishedOffers} from './offers.js';
 import {calendarHealth,registrationStatus} from './health.js';
+import {manualRefresh} from './manual-refresh.js';
 const json = (data,status=200) => Response.json(data,{status,headers:{'Cache-Control':'public, max-age=300','X-Content-Type-Options':'nosniff'}});
 export default {
   async fetch(request,env,ctx) {
     const url = new URL(request.url);
+    if(url.pathname==='/api/admin/refresh')return manualRefresh(request,env);
     if(url.pathname==='/api/metrics'){
       if(request.method!=='POST')return json({error:'Method not allowed'},405);
       if(request.headers.get('origin')!==url.origin)return json({error:'Not allowed'},403);

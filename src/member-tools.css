@@ -7,4 +7,7 @@
 @media(pointer:coarse){.events-page .events-plan-button{min-height:36px}}.calendar-health{margin:14px 0;color:#aaa;font-size:11px}.calendar-health summary{cursor:pointer}.calendar-health ul{line-height:1.8}.calendar-status{border:1px solid #555;color:#bbb}.member-tool :is(button,a,input,select):focus-visible,.events-plan-button:focus-visible{outline:2px solid #ffd400;outline-offset:3px}
 
 .member-tool select{min-width:0}
+.service-health-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.service-health-heading h3{margin:0}
+.service-health-heading button{display:inline-flex;align-items:center;gap:8px;min-height:36px}
 @media(max-width:700px){.lap-submit-grid{grid-template-columns:minmax(0,1fr)!important}.member-tool-row{gap:8px}}
