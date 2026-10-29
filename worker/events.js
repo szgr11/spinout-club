@@ -73,23 +73,30 @@ export function parseSpeedVentures(html) {
   });
   return events.filter(Boolean);
 }
-export function parseSpeedSF(html, year) {
+export function parseSpeedSF(html, year, pageURL=`https://www.speedsf.com/events${year}`) {
   const $ = load(html); const events = []; const source = SOURCES[1];
-  $('.ssf-card').each((_, a) => {
-    const card = $(a); const title = clean(card.find('.ssf-card-title').text());
-    const venue = clean(card.find('.ssf-card-venue').text()) || title;
+  const canonical=$('link[rel="canonical"]').attr('href');
+  const pageYear=Number(canonical?.match(/\/events(20\d{2})/)?.[1]||$('title').text().match(/20\d{2}/)?.[0])||year;
+  if(canonical&&safeURL(canonical)&&new URL(canonical).hostname==='www.speedsf.com')pageURL=canonical;
+  $('.ssf-card,[class*="-card"]').each((_, a) => {
+    const card = $(a),nextClass=(card.attr('class')||'').split(/\s+/).find(c=>/^ssf\d{2}-card$/.test(c));
+    if(!card.hasClass('ssf-card')&&!nextClass)return;
+    const prefix=nextClass?.replace('-card',''),eventYear=prefix?2000+Number(prefix.slice(3)):pageYear;
+    const title = clean(card.find(prefix?`.${prefix}-title`:'.ssf-card-title').text());
+    const venue = clean(card.find(prefix?`.${prefix}-venue`:'.ssf-card-venue').text()) || title;
     if (/drift|slip happens/i.test(title)) return;
-    const registrations = card.find('.ssf-reg-btn');
+    const registrations = card.find(prefix?`.${prefix}-reg a`:'.ssf-reg-btn');
     const hpde = registrations.filter((_, a) => /hpde|register/i.test($(a).text())).first();
     const link = hpde.length ? hpde : registrations.first();
-    const url = safeURL(link.attr('href'), source.url);
+    const href=link.attr('href'),url=href?safeURL(href,pageURL):pageURL;
     if (!url) return;
     const offers=extractOffers(card.html(),{url:source.url,sourceId:source.id,today:todayPacific()});
     const components=card.find('.ssf-comp-row').toArray().filter(e=>/special/i.test($(e).find('.ssf-badge').text())).map(e=>clean($(e).find('.ssf-comp-name').text()));
     if(/special|fest|meet/i.test(title))components.push(title);
-    for (const date of parseDateRange(card.find('.ssf-card-date').text(), year)) {
-      const specials=components.filter(text=>{const explicit=parseDateRange(text,year);return !explicit.length||explicit.includes(date);});
-      events.push(makeEvent({ title: `${title} · SpeedSF`, date, venue, organizer: 'SpeedSF', url, source, kind: hpde.length ? 'Track day' : kindOf(card.text()),...offers,specials }));
+    for (const date of parseDateRange(card.find(prefix?`.${prefix}-date`:'.ssf-card-date').text(), eventYear)) {
+      const specials=components.filter(text=>{const explicit=parseDateRange(text,eventYear);return !explicit.length||explicit.includes(date);});
+      const event=makeEvent({ title: `${title} · SpeedSF`, date, venue, organizer: 'SpeedSF', url, source, kind: hpde.length ? 'Track day' : kindOf(card.text()),...offers,specials,note:!href?'Preliminary published schedule; registration opens later and dates may change.':'' });
+      if(event){if(!href)event.scheduleOnly=true;events.push(event);}
     }
   });
   return events.filter(Boolean);
@@ -156,10 +163,12 @@ async function boundedText(response) {
     return text+decoder.decode();
   } finally {reader.releaseLock();}
 }
-async function get(url, asJSON = false) {
+const manualMSRListings=new Set(ORGANIZERS.filter(s=>s.adapter==='msr-api').map(s=>s.feedUrl||s.url));
+const allowedMSRListing=url=>{try{const u=new URL(url);u.pathname=u.pathname.replace(/\/$/,'');return manualMSRListings.has(u.href);}catch{return false;}};
+async function get(url, asJSON = false, manualListing = false) {
   let r;
   for(let n=0;n<4;n++){
-   if(isMSRPage(url))throw new Error('MotorsportReg event pages must use the approved API');
+   if(isMSRPage(url)&&!(manualListing&&allowedMSRListing(url)))throw new Error('MotorsportReg page is outside the manual listing allowlist');
    r=await fetch(url,{redirect:'manual',headers:{'User-Agent':'SpinoutClub-EventCalendar/1.0 (+https://spinoutclub.cc/events)',Accept:asJSON?'application/json':'text/html'},signal:AbortSignal.timeout(20000)});
    if(r.status>=300&&r.status<400){url=new URL(r.headers.get('location'),url).href;continue;}break;
   }
@@ -167,8 +176,17 @@ async function get(url, asJSON = false) {
   const body = await boundedText(r);
   return asJSON ? JSON.parse(body) : body;
 }
-export async function fetchSource(source, today = todayPacific(),env={}) {
-  if(source.id===MSR_SOURCE.id)return fetchMSREvents({env,today,makeEvent});
+export async function fetchSource(source, today = todayPacific(),env={},options={}) {
+  if(source.id===MSR_SOURCE.id){
+   if(!options.manual)return fetchMSREvents({env,today,makeEvent});
+   const rows=[];
+   // A user-triggered pass over the three existing organizer listings only.
+   // No event-page crawling, pagination discovery or parallel MSR requests.
+   for(const organizer of ORGANIZERS.filter(s=>s.adapter==='msr-api')){
+    rows.push(...parseOrganizer(await get(organizer.feedUrl||organizer.url,false,true),{...organizer,id:MSR_SOURCE.id,adapter:'msr'},today));
+   }
+   Object.defineProperty(rows,'verifiedEmpty',{value:true});return rows;
+  }
   if(TRACK_SOURCES.some(s=>s.id===source.id)){
     if(source.adapter==='chuckwalla-track')return parseTrack(await get(`${source.url}/data?status=2&start=${today}&end=${Number(today.slice(0,4))+2}-01-01`,true),source,today);
     if(source.adapter==='spring-track'){
@@ -176,7 +194,7 @@ export async function fetchSource(source, today = todayPacific(),env={}) {
       const pages=Math.max(1,...$('a[href]').toArray().map(a=>Number($(a).attr('href').match(/^\/calendar\/Page-(\d+)$/)?.[1]||1)));
       if(pages>30)throw new Error('Spring Mountain calendar exceeds page limit');
       const rows=[...parseTrack(first,source,today)];
-      for(let i=2;i<=pages;i+=3){const batch=await Promise.all(Array.from({length:Math.min(3,pages-i+1)},(_,n)=>get(new URL(`/calendar/Page-${i+n}`,source.url).href).then(html=>parseTrack(html,source,today))));rows.push(...batch.flat());}
+      for(let i=2;i<=pages;i++)rows.push(...parseTrack(await get(new URL(`/calendar/Page-${i}`,source.url).href),source,today));
       Object.defineProperty(rows,'verifiedEmpty',{value:true});return rows;
     }
     return parseTrack(await get(source.feedUrl||source.url),source,today);
@@ -186,6 +204,7 @@ export async function fetchSource(source, today = todayPacific(),env={}) {
     const year=Number(today.slice(0,4));
     const years=await Promise.allSettled([year,year+1].map(async y=>{const html=await get(`https://www.speedsf.com/events${y}`);if(!load(html)('title,h1').text().includes(String(y)))throw new Error('Schedule year not confirmed');return parseSpeedSF(html,y);}));
     const rows=years.flatMap(r=>r.status==='fulfilled'?r.value:[]);
+    if(!rows.length){try{const html=await get(`https://www.speedsf.com/events${year-1}`);if(load(html)('title,h1').text().includes(String(year)))rows.push(...parseSpeedSF(html,year-1));}catch{/* Keep the previous snapshot if no published year is recognizable. */}}
     if(!rows.length)throw new Error('No recognized schedule cards');return rows;
   }
   if (source.id === 'buttonwillow') {
@@ -232,27 +251,27 @@ export async function enrichEvents(events,previous={},today=todayPacific()) {
  });
  return {events:enriched,detailCache:cache,offerCoverage:{total:urls.length,checked:urls.filter(u=>cache[u]?.status==='ok').length,checkedThisRefresh:due.length}};
 }
-export async function refreshEvents(kv,env={}) {
+export async function refreshEvents(kv,env={},options={}) {
  const today=todayPacific(),previous=await kv.get('calendar','json');
- const results=await Promise.allSettled(SOURCES.map(s=>isManualSource(s)?Promise.resolve(null):fetchSource(s,today,env)));
+ const results=await Promise.allSettled(SOURCES.map(s=>isManualSource(s)&&!options.manual?Promise.resolve(null):fetchSource(s,today,env,options)));
  const events=[],sources=[],sourceSnapshots={};
  results.forEach((result,i)=>{
   const source=SOURCES[i],old=previous?.sources?.find(s=>s.id===source.id);
-  if(!isManualSource(source)&&result.status==='fulfilled'&&(result.value.length||result.value.verifiedEmpty)){
-   sourceSnapshots[source.id]=result.value;events.push(...result.value);sources.push({...source,status:'ok',lastSuccess:new Date().toISOString(),count:result.value.length,...sourceCountHealth(result.value.length,old)});
+  if(result.status==='fulfilled'&&result.value&&(result.value.length||result.value.verifiedEmpty)){
+   sourceSnapshots[source.id]=result.value;events.push(...result.value);sources.push(calendarSourceStatus({...source,status:'ok',lastSuccess:new Date().toISOString(),...(isManualSource(source)?{lastManualAttemptAt:new Date().toISOString()}:{}),count:result.value.length,...sourceCountHealth(result.value.length,old)}));
   }else{
    const legacyMSR=source.id===MSR_SOURCE.id?['hookedondriving','slipangle','fasttoys']:[];
    const legacyRows=legacyMSR.flatMap(id=>previous?.sourceSnapshots?.[id]||[]).map(e=>({...e,sources:[{id:source.id,name:source.name,url:source.url}]}));
    const prior=previous?.sourceSnapshots?.[source.id]||(legacyRows.length?legacyRows:(previous?.events||[]).filter(e=>e.sources.some(s=>[source.id,...legacyMSR].includes(s.id))).map(e=>({...e,sources:[{id:source.id,name:source.name,url:source.url}],promotions:(e.promotions||[]).filter(x=>[source.id,...legacyMSR].includes(x.sourceId)),prices:(e.prices||[]).filter(x=>[source.id,...legacyMSR].includes(x.sourceId))})));
    sourceSnapshots[source.id]=prior;
-   if(isManualSource(source)){
+   if(isManualSource(source)&&!options.manual){
     events.push(...prior);
-    sources.push(calendarSourceStatus({...source,lastSuccess:old?.lastSuccess||null,count:prior.length}));
+    sources.push(calendarSourceStatus({...old,...source,status:old?.status||'not_requested',lastSuccess:old?.lastSuccess||null,count:prior.length}));
     return;
    }
    events.push(...prior.map(e=>({...e,sourceStale:true,promotions:(e.promotions||[]).map(x=>({...x,stale:true})),prices:(e.prices||[]).map(x=>({...x,stale:true}))})));
    const pending=result.status==='rejected'&&result.reason?.code==='msr_access_pending';
-   sources.push({...source,status:pending?'pending_access':'stale',lastSuccess:old?.lastSuccess||null,count:prior.length,error:pending?'API access is pending; confirm last known dates with the organizer.':'Could not refresh this source; verify dates on the organizer’s website.'});
+   sources.push(calendarSourceStatus({...source,status:pending?'pending_access':'stale',...(isManualSource(source)?{lastManualAttemptAt:new Date().toISOString()}:{}),lastSuccess:old?.lastSuccess||null,count:prior.length,error:pending?'API access is pending; confirm last known dates with the organizer.':'Could not refresh this source; verify dates on the organizer’s website.'}));
   }
  });
  const enriched=await enrichEvents(mergeEvents(events,today),previous?.detailCache,today);

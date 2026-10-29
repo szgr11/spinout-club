@@ -56,7 +56,7 @@ export async function fetchMSREvents({env={},today,makeEvent,fetcher=fetch}){
  for(let page=0;page<25;page++){
   const overlapStart=new Date(Date.parse(today+'T12:00:00Z')-9*86400000).toISOString().slice(0,10);
   const input={countries:['US'],geoLocate:false,geoPoint:{lat:36.2,lon:-119.3,maxRadius:650,unit:'MI'},eventStart:overlapStart,eventEnd:`${Number(today.slice(0,4))+2}-01-01`,eventStateExclude:['CANCELLED','SUSPENDED'],locales:['en-US'],limit:100,...(nextToken?{nextToken}:{})};
-  const r=await fetcher(MSR_ENDPOINT,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json','Accept':'application/json','x-api-key':env.MSR_API_KEY.trim()},body:JSON.stringify({query:MSR_QUERY,variables:{input}}),signal:AbortSignal.timeout(20000)});
+  const r=await fetcher(MSR_ENDPOINT,{method:'POST',redirect:'manual',headers:{'Content-Type':'application/json','Accept':'application/json','x-api-key':env.MSR_API_KEY.trim()},body:JSON.stringify({query:MSR_QUERY,variables:{input}}),signal:AbortSignal.timeout(20000)});
   if(!r.ok)throw new Error('MotorsportReg API unavailable');
   const body=await boundedJSON(r),result=body.data?.events;
   if(body.errors?.length||result?.errors?.length||!Array.isArray(result?.data))throw new Error('MotorsportReg API returned errors');

@@ -66,7 +66,8 @@ test('Canyon Run aliases share a canonical organizer while distinct days and lay
 test('public API immediately canonicalizes and merges cached organizer aliases without scraping',async()=>{
  const event={date:'2099-11-21',track:'Buttonwillow · Circuit',organizer:'Canyon Run Racing',kind:'Track day',sources:[{id:'buttonwillow'}],url:'https://buttonwillowraceway.com/event/canyon-run/'};
  const calendar={updatedAt:'2026-10-19T17:02:00Z',sources:[{id:'buttonwillow',status:'ok'}],events:[event,{...event,organizer:'Canyon Run Sunday',sources:[{id:'chuckwalla-calendar'}]}]};
- const response=await worker.fetch(new Request('https://spinoutclub.cc/api/events'),{EVENTS:{get:async()=>calendar}},{});
+ const original=globalThis.fetch;globalThis.fetch=async url=>{assert.match(String(url),/spinout_calendar_changes$/);return Response.json([]);};
+ let response;try{response=await worker.fetch(new Request('https://spinoutclub.cc/api/events'),{EVENTS:{get:async()=>calendar},SUPABASE_URL:'https://synthetic.supabase.co',SUPABASE_PUBLISHABLE_KEY:'synthetic'},{});}finally{globalThis.fetch=original;}
  assert.equal(response.status,200);const result=await response.json();
  assert.equal(result.events.length,1);assert.equal(result.events[0].organizer,'Canyon Run Sundays');assert.equal(result.events[0].sources.length,2);
  assert.equal(result.updatedAt,calendar.updatedAt);assert.deepEqual(result.sources,calendar.sources);
@@ -81,5 +82,5 @@ test('upstream failures retain previously verified dates and mark affected sourc
  const original=globalThis.fetch;
  globalThis.fetch=async()=>new Response('unavailable',{status:503});
  let saved;const previous={sources:[{id:'speedventures',lastSuccess:'2026-10-01T00:00:00Z',count:1}],events:[{date:'2099-01-01',track:'Sonoma',organizer:'Speed Ventures',kind:'Track day',sources:[{id:'speedventures'}]}]};
- try{await refreshEvents({get:async()=>previous,put:async(k,v)=>saved=JSON.parse(v)});assert.equal(saved.events.length,1);assert.ok(saved.sources.every(s=>s.status===(s.id==='motorsportreg-api'?'pending_access':'stale')));assert.equal(saved.sources[0].lastSuccess,previous.sources[0].lastSuccess);}finally{globalThis.fetch=original;}
+ try{await refreshEvents({get:async()=>previous,put:async(k,v)=>saved=JSON.parse(v)});assert.equal(saved.events.length,1);assert.ok(saved.sources.every(s=>s.status===(['motorsportreg-api','spring-calendar'].includes(s.id)?'on_demand':'stale')));assert.equal(saved.sources[0].lastSuccess,previous.sources[0].lastSuccess);}finally{globalThis.fetch=original;}
 });

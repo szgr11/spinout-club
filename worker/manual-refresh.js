@@ -29,7 +29,7 @@ export async function manualRefresh(request,env,{fetcher=fetch,refresh=refreshEv
   if(retryAfter>0)return reply({error:`A refresh was recently requested. Try again in ${retryAfter} seconds.`,retryAfter},429);
   await env.EVENTS.put('manual-refresh-at',String(startedAt),{expirationTtl:120});
   stage='calendar';
-  const calendar=await refresh(env.EVENTS,env);
+  const calendar=await refresh(env.EVENTS,env,{manual:true});
   return reply({health:calendarHealth(calendar),counts:Object.fromEntries(countKeys.map(k=>[k,counts[k]]))});
  }catch(error){
   const type=['TypeError','TimeoutError','AbortError'].includes(error?.name)?error.name:'Error';

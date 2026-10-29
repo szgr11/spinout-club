@@ -56,9 +56,12 @@ test('manual source policy applies to old snapshots while automatic source failu
  ]};
  const health=calendarHealth(snapshot);
  assert.deepEqual(health.issues,['SpeedSF: refresh delayed']);
- assert.equal(health.sources[0].status,'manual');assert.equal(health.sources[0].lastSuccess,snapshot.sources[0].lastSuccess);
+ assert.equal(health.sources[0].status,'on_demand');assert.equal(health.sources[0].lastSuccess,snapshot.sources[0].lastSuccess);
  assert.equal(snapshot.sources[0].status,'pending_access');
- const response=await worker.fetch(new Request('https://spinoutclub.cc/api/events'),{EVENTS:{get:async()=>snapshot}},{});
- const data=await response.json();assert.equal(data.sources[0].status,'manual');assert.equal(data.sources[1].status,'manual');assert.equal(data.sources[2].status,'stale');
+ const original=globalThis.fetch;globalThis.fetch=async()=>Response.json([]);
+ try{
+ const response=await worker.fetch(new Request('https://spinoutclub.cc/api/events'),{EVENTS:{get:async()=>snapshot},SUPABASE_URL:'https://synthetic.supabase.co',SUPABASE_PUBLISHABLE_KEY:'synthetic'},{});
+ const data=await response.json();assert.equal(data.sources[0].status,'on_demand');assert.equal(data.sources[1].status,'on_demand');assert.equal(data.sources[2].status,'stale');
+ }finally{globalThis.fetch=original;}
  const manualOnly={...snapshot,sources:snapshot.sources.slice(0,2)};assert.equal(calendarHealth(manualOnly).status,'ok');
 });

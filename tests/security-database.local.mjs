@@ -39,6 +39,7 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
   await db.exec(await readFile(new URL('../supabase/migrations/20261022032823_publish_public_and_member_terms.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261022035414_operator_privacy_and_liability_cap.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20261022042339_terms_review_timer_from_open.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261029014833_calendar_entry_moderation.sql',import.meta.url),'utf8'));
   const scalar=async q=>(await db.query(q)).rows[0];
   const as=async(role,uid='')=>db.exec("reset role;set role "+role+";set request.jwt.claim.sub='"+uid+"';");
   await db.exec("update profiles set auth_user_id='"+ADMIN+"' where username='admin';update profiles set auth_user_id='"+MEMBER+"' where username='member';update profiles set auth_user_id='"+BANNED+"' where username='banned';");
@@ -86,6 +87,33 @@ test('security migration in isolated PostgreSQL with synthetic users only',async
   // Existing permission tests use only synthetic accounts with valid evidence.
   await as('postgres');
   await db.query("insert into spinout_private.terms_acceptances(auth_user_id,version,content_hash,reviewed_at,bottom_at) select id,$1,$2,clock_timestamp()-interval '20 seconds',clock_timestamp()-interval '13 seconds' from auth.users on conflict do nothing",[TERMS.version,TERMS_HASH]);
+  await t.test('calendar moderation is permissioned, reversible, audited and protected from stale edits',async()=>{
+   const document={id:'synthetic-day',date:'2099-02-01',title:'Synthetic track day',track:'Buttonwillow',region:'SoCal',organizer:'Synthetic club',kind:'Track day',url:'https://example.com/event',note:''};
+   const edit=(action,revision=null,doc=document)=>db.query('select spinout_edit_calendar_entries($1,$2)',[action,JSON.stringify([{id:doc.id,revision,document:doc}])]);
+   await as('anon');await assert.rejects(db.query('select spinout_calendar_editor()'),/permission denied/);
+   assert.deepEqual((await scalar('select spinout_calendar_changes() s')).s,[]);
+   await as('authenticated',MEMBER);await assert.rejects(edit('save'),/Moderator access/);
+   await assert.rejects(db.query('select * from spinout_private.calendar_entry_overrides'),/permission denied/);
+   await as('postgres');await db.query("update profiles set moderator=true where username='member'");
+   await as('authenticated',MEMBER);await edit('save');
+   let rows=(await scalar('select spinout_calendar_editor() s')).s,revision=rows[0].updated_at;
+   await as('anon');let published=(await scalar('select spinout_calendar_changes() s')).s;
+   assert.equal(published[0].document.title,document.title);assert.equal(published[0].updated_by,undefined);
+   await as('authenticated',MEMBER);await edit('hide',revision);
+   await assert.rejects(edit('restore',revision),/entry changed/);
+   rows=(await scalar('select spinout_calendar_editor() s')).s;revision=rows[0].updated_at;
+   await as('anon');published=(await scalar('select spinout_calendar_changes() s')).s;
+   assert.equal(published[0].state,'hidden');assert.equal(published[0].document,null);
+   await as('authenticated',MEMBER);await edit('restore',revision);
+   rows=(await scalar('select spinout_calendar_editor() s')).s;await edit('remove',rows[0].updated_at);
+   assert.equal((await scalar('select spinout_calendar_changes() s')).s[0].document,null);
+   const valid={...document,id:'batch-valid'},invalid={...document,id:'batch-invalid',url:'javascript:bad'};
+   await assert.rejects(db.query('select spinout_edit_calendar_entries($1,$2)',['save',JSON.stringify([{id:valid.id,document:valid},{id:invalid.id,document:invalid}])]),/HTTPS/);
+   assert.equal((await scalar('select spinout_calendar_editor() s')).s.length,1);
+   await assert.rejects(db.query('select * from spinout_private.calendar_entry_audit'),/permission denied/);
+   await as('postgres');assert.equal((await scalar('select count(*)::integer n from spinout_private.calendar_entry_audit')).n,4);
+   await db.query("update profiles set moderator=false where username='member'");
+  });
   await t.test('public rights reports are private and members cannot forge or rewrite them',async()=>{
    await as('service_role');
    const id=(await scalar("insert into legal_reports(category,email,subject,body) values('copyright','synthetic@example.com','Synthetic report','Synthetic complaint text') returning id")).id;

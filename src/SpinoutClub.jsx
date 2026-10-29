@@ -14,6 +14,7 @@ import OptionalFeature from './OptionalFeature.jsx';
 import PageLoading from './PageLoading.jsx';
 import {applyGarageSpecs} from './event-tools.js';
 const TrackEditor=lazy(()=>import('./TrackEditor.jsx'));
+const CalendarEditor=lazy(()=>import('./CalendarEditor.jsx'));
 const Garage=lazy(()=>import('./Garage.jsx'));
 const ServiceStatus=lazy(()=>import('./ServiceStatus.jsx'));
 import { Trophy, Clock, User, LogOut, Plus, Check, X, Shield, Flag, Thermometer, Calendar, Zap, ChevronRight, AlertCircle, Edit2, Ban, MapPin, Megaphone, Lock, Settings, Pin } from 'lucide-react';
@@ -1393,6 +1394,7 @@ function AdminView({
     { id: 'members', label: `MEMBERS`, count: userList.length },
     { id: 'laps', label: `ALL LAPS`, count: laps.length },
     { id: 'tracks', label: `TRACKS`, count: allTracks.length },
+    { id: 'calendar', label: 'TRACK DAY ENTRIES', count: '↗' },
     { id: 'billboards', label: `BILLBOARDS`, count: billboards.length },
     ...(isAdmin(session)?[{ id: 'health', label: 'SERVICE HEALTH', count: '↗' }]:[]),
   ];
@@ -1422,6 +1424,7 @@ function AdminView({
 
       <div key={section} className="club-tab-panel">
       {section==='messages'&&<OptionalFeature><ModInbox account={session}/></OptionalFeature>}
+      {section==='calendar'&&<OptionalFeature><Suspense fallback={<p role="status">Loading track day entries…</p>}><CalendarEditor/></Suspense></OptionalFeature>}
       {section==='health'&&isAdmin(session)&&<OptionalFeature><Suspense fallback={<p role="status">Loading service health…</p>}><ServiceStatus/></Suspense></OptionalFeature>}
       {section === 'pending_laps' && (
         <PendingLapsPanel

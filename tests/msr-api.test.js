@@ -19,7 +19,7 @@ test('approved calendar requests use the documented GraphQL endpoint, secret hea
  };
  try{
   const rows=await fetchSource(MSR_SOURCE,'2026-10-21',env);assert.equal(rows.length,4);assert.equal(calls.length,2);
-  for(const call of calls){assert.equal(call.url,MSR_ENDPOINT);assert.equal(call.options.headers['x-api-key'],env.MSR_API_KEY);assert.equal(call.options.redirect,'error');const body=JSON.parse(call.options.body);assert.equal(body.variables.input.eventEnd,'2028-01-01');assert.equal(body.variables.input.geoLocate,false);assert.ok(!/attendee|email|vehicle|payment/i.test(body.query));}
+  for(const call of calls){assert.equal(call.url,MSR_ENDPOINT);assert.equal(call.options.headers['x-api-key'],env.MSR_API_KEY);assert.equal(call.options.redirect,'manual');const body=JSON.parse(call.options.body);assert.equal(body.variables.input.eventEnd,'2028-01-01');assert.equal(body.variables.input.geoLocate,false);assert.ok(!/attendee|email|vehicle|payment/i.test(body.query));}
   assert.equal(rows[0].registrationState,'REGISTRATION_OPEN');assert.equal(rows[0].msrEventId,'first');assert.deepEqual(rows.slice(0,2).map(r=>r.date),['2026-11-07','2026-11-08']);
  }finally{globalThis.fetch=original;}
 });
@@ -52,5 +52,5 @@ test('manual sources retain saved dates without automated fetches or delay warni
  const original=globalThis.fetch,calls=[];globalThis.fetch=async url=>{calls.push(url);return new Response('',{status:503});};
  const previous={events:[],sources:[],sourceSnapshots:{hookedondriving:[{title:'Old published date',date:'2099-01-01',track:'Laguna Seca',region:'NorCal',organizer:'Hooked on Driving',url:'https://www.motorsportreg.com/events/synthetic',kind:'Track day',sources:[{id:'hookedondriving'}]}]}};
  const kv={get:async()=>previous,put:async()=>{}};
- try{const r=await refreshEvents(kv);assert.equal(r.events.length,1);assert.notEqual(r.events[0].sourceStale,true);assert.equal(r.sources.find(s=>s.id===MSR_SOURCE.id).status,'manual');assert.equal(r.sources.find(s=>s.id==='spring-calendar').status,'manual');assert.ok(calls.every(url=>!isMSRPage(url)&&!String(url).includes('calendar.springmountainmotorsports.com')));}finally{globalThis.fetch=original;}
+ try{const r=await refreshEvents(kv);assert.equal(r.events.length,1);assert.notEqual(r.events[0].sourceStale,true);assert.equal(r.sources.find(s=>s.id===MSR_SOURCE.id).status,'on_demand');assert.equal(r.sources.find(s=>s.id==='spring-calendar').status,'on_demand');assert.ok(calls.every(url=>!isMSRPage(url)&&!String(url).includes('calendar.springmountainmotorsports.com')));}finally{globalThis.fetch=original;}
 });
