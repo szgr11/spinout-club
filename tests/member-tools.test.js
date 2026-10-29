@@ -48,3 +48,17 @@ test('health checks use one snapshot read and no source crawl',async()=>{
  let calls=0;const response=await worker.fetch(new Request('https://spinoutclub.cc/api/health'),{EVENTS:{get:async()=>{calls++;return null;}}},{});
  assert.equal(response.status,503);assert.equal((await response.json()).status,'unavailable');assert.equal(calls,1);
 });
+test('manual source policy applies to old snapshots while automatic source failures remain visible',async()=>{
+ const snapshot={updatedAt:new Date().toISOString(),events:[],sources:[
+  {id:'motorsportreg-api',name:'MotorsportReg',status:'pending_access',count:2,lastSuccess:'2026-10-20T12:00:00Z',dropDetected:true},
+  {id:'spring-calendar',name:'Spring Mountain',status:'stale',count:1},
+  {id:'speedsf',name:'SpeedSF',status:'stale',count:3},
+ ]};
+ const health=calendarHealth(snapshot);
+ assert.deepEqual(health.issues,['SpeedSF: refresh delayed']);
+ assert.equal(health.sources[0].status,'manual');assert.equal(health.sources[0].lastSuccess,snapshot.sources[0].lastSuccess);
+ assert.equal(snapshot.sources[0].status,'pending_access');
+ const response=await worker.fetch(new Request('https://spinoutclub.cc/api/events'),{EVENTS:{get:async()=>snapshot}},{});
+ const data=await response.json();assert.equal(data.sources[0].status,'manual');assert.equal(data.sources[1].status,'manual');assert.equal(data.sources[2].status,'stale');
+ const manualOnly={...snapshot,sources:snapshot.sources.slice(0,2)};assert.equal(calendarHealth(manualOnly).status,'ok');
+});

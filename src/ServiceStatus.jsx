@@ -37,6 +37,7 @@ export default function ServiceStatus(){
   {message&&<p role="status" className="member-tool-success">{message}</p>}{error&&<p role="alert" className="member-tool-error">{error}</p>}
   {health&&<><p>Calendar: {health.status} · {health.eventDays??'—'} upcoming event days</p>{health.updatedAt&&<p className="member-tool-note">Last calendar update: {new Date(health.updatedAt).toLocaleString()}</p>}<ul>{health.issues?.map(i=><li key={i}>{i}</li>)}</ul></>}
   {counts&&<div className="member-tool-grid">{Object.entries(counts).map(([k,v])=><p key={k}>{k.replaceAll('_',' ')}<br/><strong>{v}</strong></p>)}</div>}
+  {health?.sources?.some(s=>s.status==='manual')&&<p className="member-tool-note">Manually maintained: {health.sources.filter(s=>s.status==='manual').map(s=>s.name).join(', ')}. These sources are excluded from automatic-refresh delay checks.</p>}
   <p className="member-tool-note">Refresh fetches the latest calendar data from configured sources and updates these checks. Allow a moment to finish. Please wait at least a minute between manual refreshes.</p>
  </section>;
 }

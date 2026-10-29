@@ -48,9 +48,9 @@ test('MotorsportReg pages and redirects are never fetched for prices or discount
   assert.equal(calls.length,1);assert.ok(calls.every(url=>!isMSRPage(url)));
  }finally{globalThis.fetch=original;}
 });
-test('pending API access preserves legacy calendar facts as stale without hitting MotorsportReg',async()=>{
+test('manual sources retain saved dates without automated fetches or delay warnings',async()=>{
  const original=globalThis.fetch,calls=[];globalThis.fetch=async url=>{calls.push(url);return new Response('',{status:503});};
  const previous={events:[],sources:[],sourceSnapshots:{hookedondriving:[{title:'Old published date',date:'2099-01-01',track:'Laguna Seca',region:'NorCal',organizer:'Hooked on Driving',url:'https://www.motorsportreg.com/events/synthetic',kind:'Track day',sources:[{id:'hookedondriving'}]}]}};
  const kv={get:async()=>previous,put:async()=>{}};
- try{const r=await refreshEvents(kv);assert.equal(r.events.length,1);assert.equal(r.events[0].sourceStale,true);assert.equal(r.sources.find(s=>s.id===MSR_SOURCE.id).status,'pending_access');assert.ok(calls.every(url=>!isMSRPage(url)));}finally{globalThis.fetch=original;}
+ try{const r=await refreshEvents(kv);assert.equal(r.events.length,1);assert.notEqual(r.events[0].sourceStale,true);assert.equal(r.sources.find(s=>s.id===MSR_SOURCE.id).status,'manual');assert.equal(r.sources.find(s=>s.id==='spring-calendar').status,'manual');assert.ok(calls.every(url=>!isMSRPage(url)&&!String(url).includes('calendar.springmountainmotorsports.com')));}finally{globalThis.fetch=original;}
 });

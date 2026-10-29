@@ -5,6 +5,7 @@ import {parseOrganizerDocument} from './organizers.js';
 import {TRACK_SOURCES,parseTrackCalendar} from './track-calendars.js';
 import {sourceCountHealth,calendarHealth} from './health.js';
 import {MSR_SOURCE,fetchMSREvents,isMSRPage} from './msr-api.js';
+import {isManualSource,calendarSourceStatus} from '../src/calendar-source-status.js';
 
 export const SOURCES = [
   { id: 'speedventures', name: 'Speed Ventures', url: 'https://www.speedventures.com/events/Default.aspx' },
@@ -233,17 +234,22 @@ export async function enrichEvents(events,previous={},today=todayPacific()) {
 }
 export async function refreshEvents(kv,env={}) {
  const today=todayPacific(),previous=await kv.get('calendar','json');
- const results=await Promise.allSettled(SOURCES.map(s=>fetchSource(s,today,env)));
+ const results=await Promise.allSettled(SOURCES.map(s=>isManualSource(s)?Promise.resolve(null):fetchSource(s,today,env)));
  const events=[],sources=[],sourceSnapshots={};
  results.forEach((result,i)=>{
   const source=SOURCES[i],old=previous?.sources?.find(s=>s.id===source.id);
-  if(result.status==='fulfilled'&&(result.value.length||result.value.verifiedEmpty)){
+  if(!isManualSource(source)&&result.status==='fulfilled'&&(result.value.length||result.value.verifiedEmpty)){
    sourceSnapshots[source.id]=result.value;events.push(...result.value);sources.push({...source,status:'ok',lastSuccess:new Date().toISOString(),count:result.value.length,...sourceCountHealth(result.value.length,old)});
   }else{
    const legacyMSR=source.id===MSR_SOURCE.id?['hookedondriving','slipangle','fasttoys']:[];
    const legacyRows=legacyMSR.flatMap(id=>previous?.sourceSnapshots?.[id]||[]).map(e=>({...e,sources:[{id:source.id,name:source.name,url:source.url}]}));
    const prior=previous?.sourceSnapshots?.[source.id]||(legacyRows.length?legacyRows:(previous?.events||[]).filter(e=>e.sources.some(s=>[source.id,...legacyMSR].includes(s.id))).map(e=>({...e,sources:[{id:source.id,name:source.name,url:source.url}],promotions:(e.promotions||[]).filter(x=>[source.id,...legacyMSR].includes(x.sourceId)),prices:(e.prices||[]).filter(x=>[source.id,...legacyMSR].includes(x.sourceId))})));
    sourceSnapshots[source.id]=prior;
+   if(isManualSource(source)){
+    events.push(...prior);
+    sources.push(calendarSourceStatus({...source,lastSuccess:old?.lastSuccess||null,count:prior.length}));
+    return;
+   }
    events.push(...prior.map(e=>({...e,sourceStale:true,promotions:(e.promotions||[]).map(x=>({...x,stale:true})),prices:(e.prices||[]).map(x=>({...x,stale:true}))})));
    const pending=result.status==='rejected'&&result.reason?.code==='msr_access_pending';
    sources.push({...source,status:pending?'pending_access':'stale',lastSuccess:old?.lastSuccess||null,count:prior.length,error:pending?'API access is pending; confirm last known dates with the organizer.':'Could not refresh this source; verify dates on the organizer’s website.'});
