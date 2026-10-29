@@ -12,7 +12,7 @@ function setup(){
  const deps={now:()=>1000000,fetcher:async(url,options)=>{
   assert.equal(url,'https://test.supabase.co/rest/v1/rpc/spinout_service_counts');
   assert.equal(options.headers.Authorization,'Bearer test-jwt');assert.equal(options.headers.apikey,'sb_publishable_test');
-  assert.equal(options.body,'{}');return Response.json(counts);
+  assert.equal(options.body,'{}');assert.equal(options.redirect,'manual');return Response.json(counts);
  },refresh:async(kv,config)=>{
   assert.equal(kv,env.EVENTS);assert.equal(config,env);runs++;
   const calendar={updatedAt:new Date().toISOString(),events:[{date:'2099-01-01'}],sources:[]};
@@ -42,6 +42,12 @@ test('authorization outages, missing configuration and malformed success respons
  }
  assert.equal(s.runs(),0);assert.equal(s.values.has('manual-refresh-at'),false);
 });
+test('admin verification never follows redirects carrying credentials',async()=>{
+ const s=setup();let calls=0;
+ s.deps.fetcher=async(_url,options)=>{calls++;assert.equal(options.redirect,'manual');return new Response(null,{status:302,headers:{location:'https://untrusted.example'}});};
+ assert.equal((await manualRefresh(request(),s.env,s.deps)).status,403);
+ assert.equal(calls,1);assert.equal(s.runs(),0);
+});
 test('verified admin refresh publishes new calendar data and returns fresh health and counts',async()=>{
  const s=setup(),response=await manualRefresh(request(),s.env,s.deps),result=await response.json();
  assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
@@ -53,5 +59,6 @@ test('verified admin refresh publishes new calendar data and returns fresh healt
 test('failed refresh retains the last valid calendar and never exposes internal errors',async()=>{
  const s=setup();s.deps.refresh=async()=>{throw new Error('private credential detail');};
  const response=await manualRefresh(request(),s.env,s.deps);assert.equal(response.status,503);
- assert.equal(s.values.get('calendar'),'previous valid snapshot');assert.doesNotMatch(await response.text(),/private credential/);
+ const result=await response.json();assert.equal(result.code,'REFRESH_CALENDAR');
+ assert.equal(s.values.get('calendar'),'previous valid snapshot');assert.doesNotMatch(JSON.stringify(result),/private credential/);
 });
